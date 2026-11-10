@@ -1,5 +1,5 @@
 import { ArrowDownLeft, Check, CircleHelp, LoaderCircle, ShieldCheck, X } from "lucide-react";
-import { Button, Dialog, Flex, IconButton } from "@radix-ui/themes";
+import { Button, Dialog, Flex, IconButton, Switch } from "@radix-ui/themes";
 import type { Translation } from "../copy";
 import type { AppStatus } from "../types";
 
@@ -10,9 +10,10 @@ type SessionFeedbackProps = {
   onDecide: (accepted: boolean) => void;
   onDisconnect: () => void;
   onDismiss: () => void;
+  onToggleControl: (enabled: boolean) => void;
 };
 
-export function SessionFeedback({ status, message, t, onDecide, onDisconnect, onDismiss }: SessionFeedbackProps) {
+export function SessionFeedback({ status, message, t, onDecide, onDisconnect, onDismiss, onToggleControl }: SessionFeedbackProps) {
   const sessionActive = status.noticeState === "connected";
   const pending = status.noticeState === "pending";
   const incoming = status.noticeState === "incoming_request";
@@ -28,6 +29,17 @@ export function SessionFeedback({ status, message, t, onDecide, onDisconnect, on
             {sessionActive && status.detail && <span>{status.detail}</span>}
           </div>
           {sessionActive && <Button variant="soft" color="red" onClick={onDisconnect}><X size={15} />{t.endSession}</Button>}
+          {sessionActive && status.sessionRole === "host" && (
+            <label className={`control-permission ${status.controlEnabled ? "is-enabled" : ""}`}>
+              <span>{t.remoteControl}</span>
+              <Switch checked={status.controlEnabled} onCheckedChange={onToggleControl} aria-label={t.remoteControl} />
+            </label>
+          )}
+          {sessionActive && status.sessionRole === "viewer" && (
+            <span className={`control-state ${status.controlEnabled ? "is-enabled" : ""}`}>
+              {status.controlEnabled ? t.controlOn : t.controlOff}
+            </span>
+          )}
           {message && <IconButton variant="ghost" color="gray" aria-label={t.dismissMessage} onClick={onDismiss}><X size={15} /></IconButton>}
         </section>
       )}

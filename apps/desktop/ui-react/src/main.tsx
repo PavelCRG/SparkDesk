@@ -6,6 +6,7 @@ import "./styles/base.css";
 import "./styles/shell.css";
 import "./styles/connection.css";
 import "./styles/feedback.css";
+import "./styles/viewer.css";
 import "./styles/responsive.css";
 import { App } from "./ui/App";
 

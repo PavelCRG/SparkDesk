@@ -4,9 +4,9 @@
   gap: 13px;
   margin-top: 17px;
   padding: 16px 19px;
-  border: 1px solid #263b37;
+  border: 1px solid #30363b;
   border-radius: 12px;
-  background: rgba(17, 26, 28, .78);
+  background: #151a1e;
 }
 
 .trust-icon {
@@ -16,7 +16,7 @@
   flex: 0 0 auto;
   place-items: center;
   border-radius: 10px;
-  background: #1b302c;
+  background: #252b30;
   color: #72cda7;
 }
 
@@ -43,7 +43,7 @@
   width: 1px;
   height: 34px;
   margin: 0 7px 0 auto;
-  background: #30413d;
+  background: #353b40;
 }
 
 .shortcut-list {
@@ -78,24 +78,24 @@ kbd {
   gap: 12px;
   margin-top: 16px;
   padding: 13px 15px;
-  border: 1px solid #3b454c;
+  border: 1px solid #333a40;
   border-radius: 10px;
-  background: #172027;
+  background: #191e22;
 }
 
 .session-banner.is-connected {
-  border-color: #2c5144;
-  background: #14221f;
+  border-color: #333a40;
+  background: #191e22;
 }
 
 .session-banner.is-pending {
-  border-color: #514833;
-  background: #211e17;
+  border-color: #333a40;
+  background: #191e22;
 }
 
 .session-banner.is-error {
-  border-color: #513a39;
-  background: #241a1a;
+  border-color: #333a40;
+  background: #191e22;
 }
 
 .banner-icon {
@@ -130,9 +130,27 @@ kbd {
   height: 32px;
 }
 
+.control-permission,
+.control-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  border: 1px solid #3a464d;
+  border-radius: 8px;
+  color: #acb8c0;
+  font-size: 10px;
+}
+
+.control-permission.is-enabled,
+.control-state.is-enabled {
+  border-color: #42484d;
+  color: #a5e1c5;
+}
+
 .consent-dialog {
-  border: 1px solid #32404a !important;
-  background: #172029 !important;
+  border: 1px solid #343a40 !important;
+  background: #191e22 !important;
   box-shadow: 0 22px 70px #0009 !important;
 }
 
@@ -157,10 +175,10 @@ kbd {
   width: 42px;
   height: 42px;
   place-items: center;
-  border: 1px solid #30475f;
+  border: 1px solid #41474c;
   border-radius: 12px;
-  background: #1e3043;
-  color: #8abaf1;
+  background: #262c31;
+  color: #c3ccd3;
 }
 
 .spin {

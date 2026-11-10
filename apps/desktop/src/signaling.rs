@@ -8,13 +8,25 @@ use tauri::{AppHandle, Emitter, Manager};
 use tokio::{sync::mpsc, time::timeout};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
-use crate::{AppState, NetworkState, NoticeState, identity::DeviceIdentity, peer::PeerSession};
+use crate::{
+    AppState, NetworkState, NoticeState, SessionRole, identity::DeviceIdentity, input::RemoteInput,
+    peer::PeerSession,
+};
 
 #[derive(Debug)]
 pub enum Command {
     Connect(String),
     Decide { accepted: bool },
     Disconnect,
+    SetRemoteControl(bool),
+    RemoteInput(RemoteInput),
+}
+
+struct ActiveSession {
+    request_id: String,
+    remote_id: String,
+    initiator_id: String,
+    peer: Option<PeerSession>,
 }
 
 pub fn start(
@@ -44,7 +56,13 @@ pub fn start(
                         NoticeState::Error,
                         "Signaling server closed the connection".into(),
                     ),
-                    Err(error) => set_notice(&app, NoticeState::Error, error),
+                    Err(error) => {
+                        app.state::<AppState>()
+                            .control_allowed
+                            .store(false, std::sync::atomic::Ordering::Release);
+                        set_session_role(&app, SessionRole::None);
+                        set_notice(&app, NoticeState::Error, error);
+                    }
                 }
                 set_network_state(&app, NetworkState::Reconnecting);
                 tokio::time::sleep(delay).await;
@@ -75,7 +93,7 @@ async fn connect_and_wait(
     let (mut socket, _) = connect_async(url)
         .await
         .map_err(|error| error.to_string())?;
-    let mut active: Option<(String, String, Option<PeerSession>)> = None;
+    let mut active: Option<ActiveSession> = None;
     let mut pending_incoming: Option<(String, String)> = None;
     let mut authenticated = false;
     let mut connection_poll = tokio::time::interval(Duration::from_millis(300));
@@ -92,14 +110,26 @@ async fn connect_and_wait(
                         }
                         let request_id = random_id()?;
                         send_message(&mut socket, ClientMessage::JoinRequest { request_id: request_id.clone(), target_id: target_id.clone() }).await?;
-                        active = Some((request_id, target_id, None));
+                        active = Some(ActiveSession {
+                            request_id,
+                            remote_id: target_id,
+                            initiator_id: identity.device_id().to_owned(),
+                            peer: None,
+                        });
+                        set_session_role(app, SessionRole::Viewer);
                         set_notice(app, NoticeState::Pending, "Sending connection request…".into());
                     }
                     Command::Decide { accepted } => {
                         if let Some((request_id, target_id)) = pending_incoming.take() {
                             send_message(&mut socket, ClientMessage::JoinDecision { request_id: request_id.clone(), target_id: target_id.clone(), accepted }).await?;
                             if accepted {
-                                active = Some((request_id, target_id, None));
+                                active = Some(ActiveSession {
+                                    request_id,
+                                    remote_id: target_id.clone(),
+                                    initiator_id: target_id,
+                                    peer: None,
+                                });
+                                set_session_role(app, SessionRole::Host);
                                 set_notice(app, NoticeState::Pending, "Request accepted; establishing a direct connection…".into());
                             } else {
                                 set_notice(app, NoticeState::Idle, "Connection request declined".into());
@@ -107,10 +137,22 @@ async fn connect_and_wait(
                         }
                     }
                     Command::Disconnect => {
-                        if let Some((request_id, target_id, session)) = active.take() {
-                            if let Some(session) = session { session.close().await; }
-                            send_message(&mut socket, ClientMessage::EndSession { request_id, target_id }).await?;
+                        app.state::<AppState>().control_allowed.store(false, std::sync::atomic::Ordering::Release);
+                        if let Some(session) = active.take() {
+                            if let Some(peer) = session.peer { peer.close().await; }
+                            send_message(&mut socket, ClientMessage::EndSession { request_id: session.request_id, target_id: session.remote_id }).await?;
                             set_notice(app, NoticeState::Idle, "Session ended".into());
+                        }
+                        set_session_role(app, SessionRole::None);
+                    }
+                    Command::SetRemoteControl(enabled) => {
+                        if let Some(peer) = active.as_ref().and_then(|session| session.peer.as_ref()) {
+                            peer.send_permission(enabled).await?;
+                        }
+                    }
+                    Command::RemoteInput(input) => {
+                        if let Some(peer) = active.as_ref().and_then(|session| session.peer.as_ref()) {
+                            peer.send_input(input).await?;
                         }
                     }
                 }
@@ -143,49 +185,111 @@ async fn connect_and_wait(
                         }
                     }
                     ServerMessage::JoinStatus { request_id, target_id, online } => {
-                        if active.as_ref().is_some_and(|(id, peer, _)| id == &request_id && peer == &target_id) {
+                        if active.as_ref().is_some_and(|session| session.request_id == request_id && session.remote_id == target_id) {
                             if online { set_notice(app, NoticeState::Pending, "Request delivered; waiting for the other user to accept…".into()); }
-                            else { active = None; set_notice(app, NoticeState::Error, "That device is offline".into()); }
+                            else { active = None; set_session_role(app, SessionRole::None); set_notice(app, NoticeState::Error, "That device is offline".into()); }
                         }
                     }
                     ServerMessage::JoinDecision { request_id, from_id, accepted } => {
-                        if let Some((id, target, _)) = &active {
-                            if id == &request_id && target == &from_id {
+                        if let Some(session) = &mut active {
+                            if session.request_id == request_id && session.remote_id == from_id {
                                 if accepted {
-                                    let (session, offer) = PeerSession::offer().await?;
+                                    let (peer, offer) = PeerSession::offer().await?;
                                     send_message(&mut socket, ClientMessage::Signal { request_id, target_id: from_id, payload: SignalPayload::Offer { sdp: offer } }).await?;
-                                    active = Some((id.clone(), target.clone(), Some(session)));
+                                    session.peer = Some(peer);
                                     set_notice(app, NoticeState::Pending, "Creating a secure direct connection…".into());
-                                } else { active = None; set_notice(app, NoticeState::Error, "Connection request declined".into()); }
+                                } else { active = None; set_session_role(app, SessionRole::None); set_notice(app, NoticeState::Error, "Connection request declined".into()); }
                             }
                         }
                     }
                     ServerMessage::Signal { request_id, from_id, payload } => {
-                        if let Some((id, target, session)) = &active {
-                            if id == &request_id && target == &from_id {
+                        if let Some(active_session) = &mut active {
+                            if active_session.request_id == request_id && active_session.remote_id == from_id {
                                 match payload {
                                     SignalPayload::Offer { sdp } => {
-                                        let (session, answer) = PeerSession::answer(&sdp).await?;
+                                        let (mut peer, answer) = PeerSession::answer(&sdp).await?;
                                         send_message(&mut socket, ClientMessage::Signal { request_id, target_id: from_id, payload: SignalPayload::Answer { sdp: answer } }).await?;
-                                        active = Some((id.clone(), target.clone(), Some(session)));
+                                        peer.authenticate(
+                                            identity,
+                                            identity.device_id(),
+                                            &active_session.remote_id,
+                                            &active_session.initiator_id,
+                                            identity.device_id(),
+                                            &active_session.request_id,
+                                        ).await?;
+                                        peer.start_data_plane(
+                                            true,
+                                            app.clone(),
+                                            app.state::<AppState>().control_allowed.clone(),
+                                        ).await?;
+                                        active_session.peer = Some(peer);
                                         set_notice(app, NoticeState::Pending, "Negotiating direct connection…".into());
                                     }
-                                    SignalPayload::Answer { sdp } => if let Some(session) = session { session.set_answer(&sdp).await?; },
+                                    SignalPayload::Answer { sdp } => if let Some(peer) = &mut active_session.peer {
+                                        peer.set_answer(&sdp).await?;
+                                        let target_id = if active_session.initiator_id == identity.device_id() {
+                                            &active_session.remote_id
+                                        } else {
+                                            identity.device_id()
+                                        };
+                                        peer.authenticate(
+                                            identity,
+                                            identity.device_id(),
+                                            &active_session.remote_id,
+                                            &active_session.initiator_id,
+                                            target_id,
+                                            &active_session.request_id,
+                                        ).await?;
+                                        peer.start_data_plane(
+                                            false,
+                                            app.clone(),
+                                            app.state::<AppState>().control_allowed.clone(),
+                                        ).await?;
+                                    },
                                     SignalPayload::IceCandidate { .. } => {}
                                 }
                             }
                         }
                     }
                     ServerMessage::SessionEnded { request_id, .. } => {
-                        if active.as_ref().is_some_and(|(id, _, _)| id == &request_id) { active = None; set_notice(app, NoticeState::Idle, "Session ended".into()); }
+                        if active.as_ref().is_some_and(|session| session.request_id == request_id) {
+                            app.state::<AppState>().control_allowed.store(false, std::sync::atomic::Ordering::Release);
+                            active = None;
+                            set_session_role(app, SessionRole::None);
+                            set_notice(app, NoticeState::Idle, "Session ended".into());
+                        }
                     }
                     ServerMessage::Error { .. } => set_notice(app, NoticeState::Error, "Signaling server rejected the request".into()),
                 }
             }
             _ = connection_poll.tick() => {}
         }
-        if let Some((_, _, Some(session))) = &active {
-            if session.is_connected() {
+        let peer_failed = active
+            .as_ref()
+            .and_then(|session| session.peer.as_ref())
+            .is_some_and(PeerSession::is_failed);
+        if peer_failed {
+            if let Some(session) = active.take() {
+                app.state::<AppState>()
+                    .control_allowed
+                    .store(false, std::sync::atomic::Ordering::Release);
+                if let Some(peer) = session.peer {
+                    peer.close().await;
+                }
+                send_message(
+                    &mut socket,
+                    ClientMessage::EndSession {
+                        request_id: session.request_id,
+                        target_id: session.remote_id,
+                    },
+                )
+                .await?;
+            }
+            set_session_role(app, SessionRole::None);
+            set_notice(app, NoticeState::Error, "Direct connection was lost".into());
+        }
+        if let Some(session) = &active {
+            if session.peer.as_ref().is_some_and(PeerSession::is_connected) {
                 set_notice(
                     app,
                     NoticeState::Connected,
@@ -257,6 +361,24 @@ fn update_status(app: &AppHandle, update: impl FnOnce(&mut crate::AppStatus)) {
 
 fn set_network_state(app: &AppHandle, network_state: NetworkState) {
     update_status(app, |status| status.network_state = network_state);
+}
+
+fn set_session_role(app: &AppHandle, role: SessionRole) {
+    app.state::<AppState>()
+        .control_allowed
+        .store(false, std::sync::atomic::Ordering::Release);
+    update_status(app, |status| {
+        status.session_role = role;
+        status.control_enabled = false;
+    });
+}
+
+pub(crate) fn set_control_status(app: &AppHandle, enabled: bool) {
+    update_status(app, |status| {
+        if status.session_role == SessionRole::Viewer {
+            status.control_enabled = enabled;
+        }
+    });
 }
 
 fn set_notice(app: &AppHandle, notice_state: NoticeState, detail: String) {

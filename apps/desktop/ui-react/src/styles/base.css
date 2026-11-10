@@ -9,7 +9,7 @@
   font-optical-sizing: auto;
   font-size: 14px;
   font-weight: 400;
-  --line: #26323e;
+  --line: #30353a;
   --mint: #74d8b0;
   --blue: #91baf2;
 }
@@ -32,4 +32,13 @@ input {
 
 button {
   -webkit-tap-highlight-color: transparent;
+}
+
+.rt-Button:focus-visible,
+.rt-IconButton:focus-visible,
+.rt-SwitchRoot:focus-visible,
+a:focus-visible {
+  outline: 2px solid #aeb8bf !important;
+  outline-offset: 2px;
+  box-shadow: none !important;
 }

@@ -22,4 +22,4 @@ npm run build
 npm run deploy
 ```
 
-The current test endpoint is a temporary Cloudflare deployment. A persistent deployment requires a Cloudflare account and stays subject to the free plan's quotas. The desktop app must not assume that a free quota is an uptime guarantee. This Worker is not a screen relay; direct connectivity can still fail behind some routers. Screen capture and remote input are not implemented yet.
+The current test endpoint is a temporary Cloudflare deployment. A persistent deployment requires a Cloudflare account and stays subject to the free plan's quotas. The desktop app must not assume that a free quota is an uptime guarantee. This Worker is not a screen relay; direct connectivity can still fail behind some routers. Screen capture and remote input use authenticated, encrypted peer data channels and are never sent through this Worker.

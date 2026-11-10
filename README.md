@@ -6,7 +6,7 @@
 
 Account-free remote desktop for Windows, built in Rust. SparkDesk is designed around direct connections, clear session consent and a small signaling service that never relays screen video.
 
-> **Status: connection prototype.** Device discovery, owner approval and direct WebRTC data-channel setup are implemented. The desktop uses a React interface inside a Rust/Tauri app. Screen streaming and remote input are not implemented yet.
+> **Status: functional prototype.** Device discovery, per-session owner approval, direct screen streaming and optional remote input are implemented. The desktop uses a React interface inside a Rust/Tauri app.
 
 ## What works today
 
@@ -15,12 +15,14 @@ Account-free remote desktop for Windows, built in Rust. SparkDesk is designed ar
 - Copy the device ID with the icon button or `Ctrl+Shift+C`; `Ctrl+L` focuses the partner ID field and `Enter` submits it.
 - Send a connection request to an online device and require its owner to accept or decline.
 - Negotiate a direct WebRTC connection after approval and provide a visible end-session action.
+- Stream the primary display directly to the connected device; the host must separately enable mouse and keyboard control.
+- Run a second local instance with a separate profile, for example `--profile=helper`.
 - Switch the home screen between Russian and English without restarting.
 - View the current signaling connection status.
 - Optional WebSocket connection to a signaling endpoint with challenge authentication and reconnect backoff.
 - Cloudflare Worker and per-device Durable Objects for presence and setup messages. A temporary public Worker is available for connection testing.
 
-Screen capture, remote input, TURN relay, installer and real two-PC verification remain future work. Without TURN, some NAT/firewall combinations will not connect.
+TURN relay, installer and real two-PC verification remain future work. Without TURN, some NAT/firewall combinations will not connect.
 
 ## Run the desktop
 
@@ -32,6 +34,16 @@ npm ci
 $env:SPARKDESK_SIGNALING_URL = "wss://sparkdesk-signaling.obtainable-bloom.workers.dev"
 npm run tauri -- dev
 ```
+
+To test two instances on one Windows PC, leave the first one running and start the second executable directly (this reuses the first window's Vite server):
+
+```powershell
+$env:SPARKDESK_SIGNALING_URL = "ws://127.0.0.1:8787"
+cd apps/desktop/ui-react
+Start-Process (Resolve-Path "..\..\..\target\debug\sparkdesk-desktop.exe") -ArgumentList "--profile=helper"
+```
+
+The second instance has its own device identity. Connect from one window to the ID shown in the other, accept the request on the host, and enable control there only when needed.
 
 The example endpoint is a temporary Cloudflare deployment and may expire. To run your own signaling Worker, use two terminals:
 
@@ -55,7 +67,7 @@ cd apps/desktop/ui-react
 npm run tauri -- dev
 ```
 
-Both devices must be online at once. The Worker coordinates requests only; session traffic is negotiated directly between devices. This build establishes the WebRTC data channels but does not yet send screen frames or remote input.
+Both devices must be online at once. The Worker coordinates requests only; screen frames and input travel directly over WebRTC data channels.
 
 ## Verify the build
 
@@ -101,7 +113,7 @@ docs/               Architecture and implementation plan
 - A device ID helps locate a device; it is not an access credential.
 - The intended product requires the remote owner to approve each session. Unattended access is out of scope.
 - Screen content and input must stay on an encrypted peer connection; the signaling Worker must never relay them.
-- This prototype does not yet provide a usable remote session. Do not expose it as a production remote-access service.
+- This prototype has not had a real two-PC/NAT traversal review. Do not expose it as a production remote-access service.
 - Review Tauri, Radix Themes and Lucide licensing and attribution requirements before publishing an installer.
 
 See [the architecture](docs/architecture.md) and [the ten-step roadmap](docs/superpowers/plans/2026-11-10-sparkdesk-foundation.md) for design details and progress.

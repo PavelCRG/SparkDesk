@@ -10,8 +10,7 @@
   padding: 23px !important;
   border: 1px solid var(--line) !important;
   border-radius: 15px !important;
-  background: rgba(20, 27, 35, .92) !important;
-  box-shadow: 0 12px 36px rgba(0, 0, 0, .12);
+  background: #171b1f !important;
 }
 
 .card-heading {
@@ -31,14 +30,12 @@
 }
 
 .icon-tile-blue {
-  border: 1px solid #2b4058;
-  background: #1b2a3a;
+  background: #252b30;
   color: var(--blue);
 }
 
 .icon-tile-green {
-  border: 1px solid #2a4840;
-  background: #1c302c;
+  background: #252b30;
   color: var(--mint);
 }
 
@@ -81,7 +78,7 @@
   justify-content: space-between;
   gap: 10px;
   padding: 0 8px 0 14px;
-  border: 1px solid #2a3743;
+  border: 1px solid #343a40;
   border-radius: 9px;
   background: #10161d;
 }
@@ -151,12 +148,17 @@
 
 .partner-input input {
   height: 43px;
-  border-color: #2a3743 !important;
+  border-color: #343a40 !important;
   background: #10161d !important;
   color: #eaf0f4 !important;
   font-family: "Cascadia Code", Consolas, monospace;
   font-size: 12px !important;
   letter-spacing: .1px;
+}
+
+.partner-input input:focus {
+  border-color: #9ba5ad !important;
+  box-shadow: 0 0 0 1px #9ba5ad !important;
 }
 
 .partner-input input::placeholder {

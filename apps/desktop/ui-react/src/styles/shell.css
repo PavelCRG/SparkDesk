@@ -6,27 +6,21 @@
   overflow: hidden;
 }
 
-.app-shell::before {
-  position: absolute;
-  top: 105px;
-  left: 50%;
-  width: 520px;
-  height: 520px;
-  transform: translateX(-50%);
-  background: radial-gradient(circle, rgba(40, 77, 91, .13) 0%, rgba(13, 18, 24, 0) 72%);
-  content: "";
-  pointer-events: none;
+.app-shell.is-fullscreen .topbar {
+  display: none;
 }
 
 .topbar {
   position: relative;
   z-index: 1;
   display: flex;
-  height: 68px;
+  height: 46px;
+  flex: 0 0 46px;
   align-items: center;
   justify-content: space-between;
-  padding: 0 34px;
-  border-bottom: 1px solid rgba(255, 255, 255, .055);
+  padding: 0 10px 0 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, .07);
+  background: #0d1218;
 }
 
 .brand {
@@ -65,7 +59,54 @@
 .topbar-actions {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
+}
+
+.topbar-actions > * {
+  position: relative;
+  z-index: 2;
+}
+
+.window-controls {
+  display: flex;
+  height: 46px;
+  align-items: stretch;
+  gap: 2px;
+  margin-left: 10px;
+}
+
+.window-control {
+  width: 44px;
+  height: 42px;
+  border-radius: 7px !important;
+  color: #bac4ce !important;
+  transition: background-color 120ms ease-out, color 120ms ease-out;
+}
+
+.window-control.close-control {
+  color: #c4cbd1 !important;
+}
+
+@media (hover: hover) {
+  .window-control:hover {
+    background: #202933 !important;
+    color: #fff !important;
+  }
+
+  .window-control.close-control:hover {
+    background: #c42b3b !important;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .window-control:active {
+    transform: scale(.96);
+  }
+}
+
+.window-control:focus-visible {
+  outline: 2px solid #aeb8bf;
+  outline-offset: -2px;
 }
 
 .network-badge {
@@ -87,7 +128,6 @@
 
 .state-online .status-dot {
   background: #6bd4a8;
-  box-shadow: 0 0 9px #6bd4a866;
 }
 
 .state-connecting .status-dot,
@@ -96,7 +136,7 @@
 }
 
 .language-button {
-  height: 32px;
+  height: 36px;
   gap: 7px;
   padding: 0 8px;
   color: #a9b4be !important;
