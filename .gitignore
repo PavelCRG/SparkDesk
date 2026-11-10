@@ -3,6 +3,10 @@
 /cloud/signaling/.wrangler/
 /cloud/signaling/.wrangler-config/
 /cloud/signaling/worker-configuration.d.ts
+/apps/desktop/ui-react/node_modules/
+/apps/desktop/ui-react/dist/
+/apps/desktop/ui-react/tsconfig.tsbuildinfo
+/apps/desktop/gen/schemas/
 /dist/
 /.env
 /.env.*

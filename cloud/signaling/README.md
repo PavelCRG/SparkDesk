@@ -11,7 +11,7 @@ npm run dev
 
 WebSocket endpoint: `ws://127.0.0.1:8787/v1/signal?device_id=<24-hex-id>`.
 
-Run the desktop client against this local Worker by setting `$env:SPARKDESK_SIGNALING_URL = "ws://127.0.0.1:8787"` before `cargo run -p sparkdesk-desktop`. The client authenticates and reports online status; join approval and media are not wired yet.
+Run the desktop client against this local Worker by setting `$env:SPARKDESK_SIGNALING_URL = "ws://127.0.0.1:8787"` and starting the Tauri frontend with `npm run tauri -- dev` from `apps/desktop/ui-react`. Two clients on the same machine or LAN can exercise authenticated presence, consent and WebRTC setup. A public deployment is needed for devices outside that network.
 
 Before going online, the client receives a random challenge, signs the domain-separated nonce with its local Ed25519 key, and sends its public key and derived ID. Registration is account-free; the Worker holds online sockets only.
 
@@ -22,4 +22,4 @@ npm run build
 npm run deploy
 ```
 
-Deployment requires a Cloudflare account and stays subject to the free plan's quotas. The desktop app must not assume that a free quota is an uptime guarantee. This Worker is not a video relay; direct connectivity can still fail behind some routers.
+The current test endpoint is a temporary Cloudflare deployment. A persistent deployment requires a Cloudflare account and stays subject to the free plan's quotas. The desktop app must not assume that a free quota is an uptime guarantee. This Worker is not a screen relay; direct connectivity can still fail behind some routers. Screen capture and remote input are not implemented yet.

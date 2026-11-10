@@ -1,31 +1,39 @@
-# SparkDesk
+<p align="center"><img src="apps/desktop/ui-react/public/sparkdesk-mark.png" width="104" alt="SparkDesk logo" /></p>
+
+<h1 align="center">SparkDesk</h1>
+
+<p align="center"><strong>Private remote support, with permission.</strong></p>
 
 Account-free remote desktop for Windows, built in Rust. SparkDesk is designed around direct connections, clear session consent and a small signaling service that never relays screen video.
 
-> **Status: early prototype.** The desktop shell, persistent device identity and optional signaling connection are implemented. Starting a remote session, viewing a screen and sending input are not available yet.
+> **Status: connection prototype.** Device discovery, owner approval and direct WebRTC data-channel setup are implemented. The desktop uses a React interface inside a Rust/Tauri app. Screen streaming and remote input are not implemented yet.
 
 ## What works today
 
-- Native Slint desktop UI with keyboard-accessible icon buttons and Lucide SVG icons.
+- Native Tauri desktop shell with a React interface built from Radix Themes controls and Lucide React icon components.
 - Persistent Ed25519 device identity; the displayed ID is derived from the public key.
 - Copy the device ID with the icon button or `Ctrl+Shift+C`; `Ctrl+L` focuses the partner ID field and `Enter` submits it.
-- Validate partner IDs before showing the current session-setup status; self-connect and malformed IDs are rejected.
+- Send a connection request to an online device and require its owner to accept or decline.
+- Negotiate a direct WebRTC connection after approval and provide a visible end-session action.
 - Switch the home screen between Russian and English without restarting.
 - View the current signaling connection status.
 - Optional WebSocket connection to a signaling endpoint with challenge authentication and reconnect backoff.
-- Cloudflare Worker and per-device Durable Objects for presence and session setup messages. The Worker builds locally but is not deployed.
+- Cloudflare Worker and per-device Durable Objects for presence and setup messages. A temporary public Worker is available for connection testing.
 
-The partner ID field does not initiate a session yet. Consent controls, WebRTC, screen capture, remote input, TURN relay, installer and real two-PC verification are still future work.
+Screen capture, remote input, TURN relay, installer and real two-PC verification remain future work. Without TURN, some NAT/firewall combinations will not connect.
 
 ## Run the desktop
 
-Requires Rust 1.92 or newer.
+Requires Rust 1.92 or newer, Node.js 20.19+ and npm.
 
 ```powershell
-cargo run -p sparkdesk-desktop
+cd apps/desktop/ui-react
+npm ci
+$env:SPARKDESK_SIGNALING_URL = "wss://sparkdesk-signaling.obtainable-bloom.workers.dev"
+npm run tauri -- dev
 ```
 
-The app starts without a server and reports that signaling is not configured. To try the local signaling Worker, use two terminals:
+The example endpoint is a temporary Cloudflare deployment and may expire. To run your own signaling Worker, use two terminals:
 
 ```powershell
 cd cloud/signaling
@@ -35,16 +43,27 @@ npm run dev
 
 ```powershell
 $env:SPARKDESK_SIGNALING_URL = "ws://127.0.0.1:8787"
-cargo run -p sparkdesk-desktop
+cd apps/desktop/ui-react
+npm run tauri -- dev
 ```
 
-This only authenticates the device and shows it online; it does not enable remote control. Deployment requires a Cloudflare account and is not configured in this repository.
+For two PCs over the public internet, deploy the Worker from `cloud/signaling` with `npm run deploy`, then set the URL on both clients:
+
+```powershell
+$env:SPARKDESK_SIGNALING_URL = "wss://sparkdesk-signaling.<your-account>.workers.dev"
+cd apps/desktop/ui-react
+npm run tauri -- dev
+```
+
+Both devices must be online at once. The Worker coordinates requests only; session traffic is negotiated directly between devices. This build establishes the WebRTC data channels but does not yet send screen frames or remote input.
 
 ## Verify the build
 
 ```powershell
 cargo fmt --all -- --check
 cargo check --workspace --offline
+npm --prefix apps/desktop/ui-react ci
+npm --prefix apps/desktop/ui-react run build
 cd cloud/signaling
 npm ci
 npm run build
@@ -56,20 +75,22 @@ npm run build
 flowchart LR
   A[Desktop A] <-->|ID, presence, session setup| S[Signaling Worker]
   S <-->|ID, presence, session setup| B[Desktop B]
-  A -. planned direct WebRTC media and input .-> B
+  A -. direct WebRTC data channels .-> B
 ```
 
-The signaling service is for finding online devices and negotiating a session. The planned direct media path reduces latency and hosting cost, but without TURN relay some NAT and firewall combinations will not connect. No universal connectivity or frame-rate target is claimed before two-PC measurements.
+The signaling service is for finding online devices and negotiating a session. The direct path avoids relaying data through the Worker, but without TURN some NAT and firewall combinations will not connect. No universal connectivity or frame-rate target is claimed before two-PC measurements.
 
 ## Project structure
 
 ```text
-apps/desktop/       Rust desktop app, local identity and Slint UI
-  src/main.rs       App startup and UI action wiring
+apps/desktop/       Rust/Tauri desktop app and React UI
+  src/main.rs       Tauri commands and app state
   src/identity.rs   Local Ed25519 device identity
-  src/signaling.rs  Authenticated signaling connection and reconnect loop
-  ui/main.slint     Bilingual home screen, layout and keyboard shortcuts
-  ui/brand/         App logo SVGs
+  src/signaling.rs  Authenticated requests, consent and WebRTC negotiation
+  src/peer.rs       Direct WebRTC data-channel setup
+  ui-react/src/ui/  Bilingual React desktop interface
+  icons/icon.ico    Windows application and installer icon
+  tauri.conf.json   Window, build and security configuration
 crates/protocol/    Versioned messages shared by Rust components
 cloud/signaling/    TypeScript Worker and per-device Durable Object
 docs/               Architecture and implementation plan
@@ -81,7 +102,6 @@ docs/               Architecture and implementation plan
 - The intended product requires the remote owner to approve each session. Unattended access is out of scope.
 - Screen content and input must stay on an encrypted peer connection; the signaling Worker must never relay them.
 - This prototype does not yet provide a usable remote session. Do not expose it as a production remote-access service.
-- Lucide icon license notices are included in `apps/desktop/ui/icons/LICENSE`.
-- Review Slint distribution terms and attribution requirements before publishing an installer.
+- Review Tauri, Radix Themes and Lucide licensing and attribution requirements before publishing an installer.
 
 See [the architecture](docs/architecture.md) and [the ten-step roadmap](docs/superpowers/plans/2026-11-10-sparkdesk-foundation.md) for design details and progress.

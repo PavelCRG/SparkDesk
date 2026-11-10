@@ -1,6 +1,6 @@
 # SparkDesk logo concepts
 
-- [Selected D/S mark](sparkdesk-mark-selected.png): the approved navy-and-blue mark, supplied as a transparent PNG for product use.
+- [Selected D/S mark](../../apps/desktop/ui-react/public/sparkdesk-mark.png): the approved navy-and-blue mark, supplied as a transparent PNG and used by the app and README.
 
 - [Round 1](sparkdesk-logo-directions-01.png): concepts 1 and 3 are the chosen directions; concept 2 is retained only for comparison.
 - [Round 2](sparkdesk-logo-directions-02.png): first follow-up draft; two marks were too close to Round 1.

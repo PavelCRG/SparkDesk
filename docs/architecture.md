@@ -7,8 +7,8 @@ Provide account-free remote support: enter a device ID, let the owner approve th
 ## Stack
 
 - Rust 2024, minimum Rust 1.92.
-- Slint 1.18 for the native desktop UI; Rust owns application logic.
-- Lucide SVG icons embedded in the Slint client; no JavaScript frontend runtime.
+- Tauri 2 with a React/Vite frontend and Rust application core.
+- Radix Themes supplies accessible React controls; Lucide React supplies tree-shaken icon components.
 - Ed25519 device identity stored in the OS user configuration directory.
 - A Rust workspace crate for the shared signaling protocol.
 - Cloudflare Worker + Durable Objects for the initial hosted signaling experiment.
@@ -35,21 +35,20 @@ The first internet version has no TURN relay. Direct connection is lower-cost an
 - Keep only the newest pending video frame so congestion does not build a long delay queue.
 - Measure capture-to-display latency, encode time, dropped frames and bitrate before setting quality claims.
 - Do not embed long-lived TURN credentials or service secrets in the desktop binary.
-- Review Slint's distribution terms and attribution requirements before publishing an installer.
+- Review Tauri, Radix Themes and Lucide licensing and attribution requirements before publishing an installer.
 
 ## Repository shape
 
 ```text
 apps/desktop/
-  src/main.rs       App startup and UI action wiring
+  src/main.rs       Tauri commands and app state
   src/identity.rs   Local Ed25519 device identity
   src/signaling.rs  Authenticated signaling connection and reconnect loop
-  ui/main.slint     Bilingual home screen, layout and keyboard shortcuts
-  ui/brand/         App logo SVGs
-  ui/icons/         Bundled Lucide SVG icons and license notice
+  ui-react/src/ui/  Bilingual React interface and session controls
+  tauri.conf.json   Window, frontend and capability configuration
 crates/protocol/    Shared versioned message types and validation
 cloud/signaling/    Worker and per-device Durable Object
 docs/               Architecture and implementation plan
 ```
 
-The desktop can connect to a configured signaling endpoint, authenticate its key and show online status. The partner button does not send a join request yet. Consent controls, screen capture, WebRTC media, remote input, deployment and real two-PC sessions remain future work.
+The desktop can connect to a configured signaling endpoint, authenticate its key, send/approve connection requests and negotiate a direct WebRTC data-channel connection. Screen capture, remote input, TURN relay, deployment and real two-PC verification remain future work.

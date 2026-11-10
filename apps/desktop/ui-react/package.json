@@ -1,0 +1,26 @@
+{
+  "name": "sparkdesk-ui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 1420 --strictPort",
+    "build": "tsc -b && vite build",
+    "tauri": "cd .. && .\\ui-react\\node_modules\\.bin\\tauri.cmd"
+  },
+  "dependencies": {
+    "@radix-ui/themes": "^3.3.0",
+    "@tauri-apps/api": "^2.12.4",
+    "lucide-react": "^1.46.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.2",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@vitejs/plugin-react": "^5.0.4",
+    "typescript": "~5.9.3",
+    "vite": "^7.1.7"
+  }
+}
