@@ -8,11 +8,14 @@ Account-free remote desktop for Windows, built in Rust. SparkDesk is designed ar
 
 - Native Slint desktop UI with keyboard-accessible icon buttons and Lucide SVG icons.
 - Persistent Ed25519 device identity; the displayed ID is derived from the public key.
-- Copy the device ID and view the current signaling connection status.
+- Copy the device ID with the icon button or `Ctrl+Shift+C`; `Ctrl+L` focuses the partner ID field and `Enter` submits it.
+- Validate partner IDs before showing the current session-setup status; self-connect and malformed IDs are rejected.
+- Switch the home screen between Russian and English without restarting.
+- View the current signaling connection status.
 - Optional WebSocket connection to a signaling endpoint with challenge authentication and reconnect backoff.
 - Cloudflare Worker and per-device Durable Objects for presence and session setup messages. The Worker builds locally but is not deployed.
 
-The partner ID field is currently a UI placeholder: it does not initiate a session. Consent controls, WebRTC, screen capture, remote input, TURN relay, installer and real two-PC verification are still future work.
+The partner ID field does not initiate a session yet. Consent controls, WebRTC, screen capture, remote input, TURN relay, installer and real two-PC verification are still future work.
 
 ## Run the desktop
 
@@ -62,6 +65,11 @@ The signaling service is for finding online devices and negotiating a session. T
 
 ```text
 apps/desktop/       Rust desktop app, local identity and Slint UI
+  src/main.rs       App startup and UI action wiring
+  src/identity.rs   Local Ed25519 device identity
+  src/signaling.rs  Authenticated signaling connection and reconnect loop
+  ui/main.slint     Bilingual home screen, layout and keyboard shortcuts
+  ui/brand/         App logo SVGs
 crates/protocol/    Versioned messages shared by Rust components
 cloud/signaling/    TypeScript Worker and per-device Durable Object
 docs/               Architecture and implementation plan

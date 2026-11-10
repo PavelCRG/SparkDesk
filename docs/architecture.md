@@ -40,10 +40,16 @@ The first internet version has no TURN relay. Direct connection is lower-cost an
 ## Repository shape
 
 ```text
-apps/desktop/       Rust app, local identity, Slint UI
-crates/protocol/    shared versioned message types
+apps/desktop/
+  src/main.rs       App startup and UI action wiring
+  src/identity.rs   Local Ed25519 device identity
+  src/signaling.rs  Authenticated signaling connection and reconnect loop
+  ui/main.slint     Bilingual home screen, layout and keyboard shortcuts
+  ui/brand/         App logo SVGs
+  ui/icons/         Bundled Lucide SVG icons and license notice
+crates/protocol/    Shared versioned message types and validation
 cloud/signaling/    Worker and per-device Durable Object
-docs/               architecture and implementation plan
+docs/               Architecture and implementation plan
 ```
 
 The desktop can connect to a configured signaling endpoint, authenticate its key and show online status. The partner button does not send a join request yet. Consent controls, screen capture, WebRTC media, remote input, deployment and real two-PC sessions remain future work.

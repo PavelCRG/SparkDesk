@@ -14,7 +14,8 @@ pub fn start(endpoint: String, identity: DeviceIdentity, window: slint::Weak<Mai
         {
             Ok(runtime) => runtime,
             Err(error) => {
-                set_status(&window, format!("Ошибка: {error}"));
+                set_network_state(&window, 3);
+                set_notice(&window, 4, error.to_string());
                 return;
             }
         };
@@ -23,8 +24,14 @@ pub fn start(endpoint: String, identity: DeviceIdentity, window: slint::Weak<Mai
             let mut delay = Duration::from_secs(1);
             loop {
                 match connect_and_wait(&endpoint, &identity, &window).await {
-                    Ok(()) => set_status(&window, "Соединение закрыто".into()),
-                    Err(error) => set_status(&window, format!("Нет связи: {error}")),
+                    Ok(()) => {
+                        set_network_state(&window, 3);
+                        set_notice(&window, 4, "сервер закрыл соединение".into());
+                    }
+                    Err(error) => {
+                        set_network_state(&window, 3);
+                        set_notice(&window, 4, error);
+                    }
                 }
                 tokio::time::sleep(delay).await;
                 delay = (delay * 2).min(Duration::from_secs(30));
@@ -56,7 +63,7 @@ async fn connect_and_wait(
         )
     };
 
-    set_status(window, "Подключаемся…".into());
+    set_network_state(window, 1);
     let (mut socket, _) = connect_async(url)
         .await
         .map_err(|error| error.to_string())?;
@@ -95,11 +102,11 @@ async fn connect_and_wait(
                     .map_err(|error| error.to_string())?;
             }
             ServerMessage::Authenticated { device_id } if device_id == identity.device_id() => {
-                set_status(window, "В сети".into());
+                set_network_state(window, 2);
             }
             ServerMessage::Authenticated { .. } => return Err("сервер вернул другой ID".into()),
             ServerMessage::IncomingJoin { from_id, .. } => {
-                set_notice(window, format!("Запрос на подключение от {from_id}"));
+                set_notice(window, 3, from_id);
             }
             ServerMessage::Error { .. } => return Err("сервер отклонил сообщение".into()),
             _ => {}
@@ -133,20 +140,21 @@ fn hex_value(byte: u8) -> Option<u8> {
     }
 }
 
-fn set_status(window: &slint::Weak<MainWindow>, value: String) {
+fn set_network_state(window: &slint::Weak<MainWindow>, state: i32) {
     let window = window.clone();
     let _ = slint::invoke_from_event_loop(move || {
         if let Some(window) = window.upgrade() {
-            window.set_network_status(value.into());
+            window.set_network_state(state);
         }
     });
 }
 
-fn set_notice(window: &slint::Weak<MainWindow>, value: String) {
+fn set_notice(window: &slint::Weak<MainWindow>, state: i32, detail: String) {
     let window = window.clone();
     let _ = slint::invoke_from_event_loop(move || {
         if let Some(window) = window.upgrade() {
-            window.set_notice(value.into());
+            window.set_notice_state(state);
+            window.set_notice_detail(detail.into());
         }
     });
 }
