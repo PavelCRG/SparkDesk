@@ -1,0 +1,184 @@
+import { Button, LineEdit } from "std-widgets.slint";
+
+export component MainWindow inherits Window {
+    title: "SparkDesk";
+    no-frame: true;
+    resize-border-width: 6px;
+    preferred-width: 1180px;
+    preferred-height: 760px;
+    min-width: 960px;
+    min-height: 700px;
+    background: #0b1018;
+    default-font-family: "Segoe UI";
+    default-font-size: 14px;
+
+    in property <string> device-id: "";
+    in property <string> network-status: "Сервер не настроен";
+    in-out property <string> peer-id: "";
+    in-out property <string> notice: "Удалённое подключение пока недоступно в прототипе";
+    callback copy-id();
+    callback connect();
+
+    VerticalLayout {
+        spacing: 0px;
+
+        Rectangle {
+            height: 48px;
+            background: #090e15;
+            WindowMoveArea { width: 100%; height: 100%; }
+            Rectangle {
+                x: 18px; y: 11px; width: 25px; height: 25px;
+                border-radius: 7px; background: #1b3150;
+                Image { source: @image-url("icons/monitor.svg"); width: 15px; height: 15px; colorize: #8bb0ff;
+                    horizontal-alignment: center; vertical-alignment: center; }
+            }
+            Text { x: 52px; y: 0px; width: 110px; height: 48px; text: "SparkDesk"; color: #e6edf7;
+                font-size: 13px; font-weight: 600; vertical-alignment: center; }
+            Rectangle { x: parent.width - 310px; y: 20px; width: 7px; height: 7px; border-radius: 4px;
+                background: root.network-status == "В сети" ? #50d1a1 : #e8ad66; }
+            Text { x: parent.width - 296px; y: 0px; width: 168px; height: 48px; text: root.network-status;
+                color: #a5b2c3; font-size: 12px; vertical-alignment: center; }
+            Button { x: parent.width - 122px; y: 8px; width: 34px; height: 32px;
+                icon: @image-url("icons/minimize.svg"); icon-size: 14px; colorize-icon: true;
+                accessible-label: "Свернуть окно"; clicked => { root.minimized = true; }
+                Tooltip { text: @markdown("Свернуть окно"); } }
+            Button { x: parent.width - 82px; y: 8px; width: 34px; height: 32px;
+                icon: @image-url("icons/maximize.svg"); icon-size: 14px; colorize-icon: true;
+                accessible-label: "Развернуть окно"; clicked => { root.maximized = !root.maximized; }
+                Tooltip { text: @markdown("Развернуть окно"); } }
+            Button { x: parent.width - 42px; y: 8px; width: 34px; height: 32px;
+                icon: @image-url("icons/close.svg"); icon-size: 14px; colorize-icon: true;
+                accessible-label: "Закрыть SparkDesk"; clicked => { root.close(); }
+                Tooltip { text: @markdown("Закрыть"); } }
+        }
+
+        Rectangle { height: 1px; background: #1e2937; }
+
+        VerticalLayout {
+            padding-left: 42px;
+            padding-right: 42px;
+            padding-top: 32px;
+            padding-bottom: 20px;
+            spacing: 22px;
+
+            VerticalLayout {
+                spacing: 8px;
+                Text { text: "УДАЛЁННАЯ ПОМОЩЬ  ·  ПРОТОТИП"; color: #83a9e7; font-size: 11px; font-weight: 700; letter-spacing: 1.2px; }
+                Text { text: "Подключение —\nпод вашим контролем"; color: #f1f5fb; font-size: 32px; font-weight: 700; }
+                Text { text: "Передайте свой ID или укажите устройство. Доступ к экрану начинается с разрешения владельца.";
+                    color: #a0adbf; font-size: 14px; wrap: word-wrap; }
+            }
+
+            HorizontalLayout {
+                spacing: 18px;
+                height: 286px;
+
+                Rectangle {
+                    min-width: 0px;
+                    horizontal-stretch: 1;
+                    border-radius: 16px;
+                    background: #121b28;
+                    border-width: 1px;
+                    border-color: #293b56;
+                    VerticalLayout {
+                        alignment: start;
+                        padding: 22px;
+                        spacing: 18px;
+                        HorizontalLayout {
+                            height: 26px;
+                            spacing: 9px;
+                            Image { source: @image-url("icons/monitor.svg"); width: 17px; height: 17px; colorize: #8190a6; }
+                            Text { text: "ВАШ КОМПЬЮТЕР"; color: #9aa6b9; font-size: 11px; font-weight: 700; vertical-alignment: center; }
+                            Rectangle { horizontal-stretch: 1; }
+                            Text { text: "ПО ЗАПРОСУ ВЛАДЕЛЬЦА"; color: #78d1ac; font-size: 10px; font-weight: 700; vertical-alignment: center; }
+                        }
+                        Text { text: "Ваш ID устройства"; color: #e0e7f1; font-size: 15px; font-weight: 600; }
+                        Rectangle {
+                            height: 76px;
+                            border-radius: 11px;
+                            background: #0c131d;
+                            border-width: 1px;
+                            border-color: #2c3d54;
+                            HorizontalLayout {
+                                padding-left: 15px;
+                                padding-right: 8px;
+                                spacing: 8px;
+                                Text { text: root.device-id; color: #f5f7fb; font-size: 20px; font-weight: 700;
+                                    letter-spacing: 1px; vertical-alignment: center; horizontal-stretch: 1; min-width: 0px; overflow: elide; }
+                                Button { width: 124px; height: 42px; text: "Копировать"; icon: @image-url("icons/copy.svg"); icon-size: 15px;
+                                    colorize-icon: true; accessible-label: "Копировать ID устройства"; clicked => { root.copy-id(); }
+                                    Tooltip { text: @markdown("Скопировать ID"); } }
+                            }
+                        }
+                        Text { text: "ID помогает найти компьютер, но сам по себе не открывает доступ к экрану.";
+                            color: #8795a8; font-size: 12px; wrap: word-wrap; min-width: 0px; }
+                        Rectangle { vertical-stretch: 1; }
+                        HorizontalLayout { height: 22px; spacing: 8px;
+                            Rectangle { width: 6px; height: 6px; border-radius: 3px; background: #50d1a1; cross-axis-self-alignment: center; }
+                            Text { text: "ID готов к передаче"; color: #9caaba; font-size: 11px; vertical-alignment: center; }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    min-width: 0px;
+                    horizontal-stretch: 1;
+                    border-radius: 16px;
+                    background: #111a28;
+                    border-width: 1px;
+                    border-color: #202c3b;
+                    VerticalLayout {
+                        alignment: start;
+                        padding: 22px;
+                        spacing: 17px;
+                        HorizontalLayout {
+                            height: 26px;
+                            spacing: 9px;
+                            Image { source: @image-url("icons/arrow-right.svg"); width: 17px; height: 17px; colorize: #8190a6; }
+                        Text { text: "НОВОЕ ПОДКЛЮЧЕНИЕ"; color: #b3c0d1; font-size: 11px; font-weight: 700; vertical-alignment: center; }
+                        }
+                        Text { text: "Удалённый компьютер"; color: #e0e7f1; font-size: 15px; font-weight: 600; }
+                        LineEdit { height: 48px; text <=> root.peer-id; placeholder-text: "Введите ID устройства";
+                            accessible-label: "ID удалённого компьютера"; min-width: 0px; }
+                        HorizontalLayout {
+                            spacing: 12px;
+                            Button { width: 170px; height: 44px; primary: true; enabled: root.peer-id != "";
+                                text: "Подключиться"; icon: @image-url("icons/arrow-right.svg"); icon-size: 16px; colorize-icon: true;
+                                accessible-label: "Подключиться"; clicked => { root.connect(); }
+                                Tooltip { text: @markdown("Подключиться"); } }
+                            Text { text: "Сервер не передаёт изображение экрана."; color: #7f8b9e; font-size: 12px;
+                                wrap: word-wrap; vertical-alignment: center; horizontal-stretch: 1; min-width: 0px; }
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                height: 76px;
+                border-radius: 14px;
+                background: #101c1c;
+                border-width: 1px;
+                border-color: #25403a;
+                Image { x: 17px; y: 25px; source: @image-url("icons/shield-check.svg"); width: 21px; height: 21px;
+                    colorize: #71cfaa; }
+                VerticalLayout { x: 52px; y: 15px; width: parent.width - 372px; height: 46px;
+                    alignment: start; spacing: 3px;
+                    Text { text: "Приватность — по умолчанию"; color: #e0eee8; font-size: 13px; font-weight: 650; }
+                    Text { text: "ID не является паролем. Каждый запрос должен подтвердить владелец устройства.";
+                        color: #98b2a7; font-size: 12px; wrap: word-wrap; }
+                }
+                Text { x: parent.width - 300px; y: 0px; width: 280px; height: 76px; text: root.notice;
+                    color: #c0cbd8; font-size: 12px; vertical-alignment: center; horizontal-alignment: right; wrap: word-wrap; }
+            }
+
+            Rectangle { vertical-stretch: 1; }
+
+            HorizontalLayout {
+                height: 20px;
+                Text { text: "SPARKDESK  ·  ПРЯМОЕ СОЕДИНЕНИЕ В ПРИОРИТЕТЕ"; color: #748197; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; }
+                Rectangle { horizontal-stretch: 1; }
+                Text { text: "БЕЗ УЧЁТНОЙ ЗАПИСИ"; color: #748197; font-size: 10px; font-weight: 700; letter-spacing: 0.5px; }
+            }
+        }
+    }
+}

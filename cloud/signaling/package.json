@@ -1,0 +1,13 @@
+{
+  "name": "sparkdesk-signaling",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "build": "wrangler deploy --dry-run",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "4.159.0"
+  }
+}

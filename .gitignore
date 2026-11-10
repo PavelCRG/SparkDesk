@@ -1,0 +1,10 @@
+/target/
+/cloud/signaling/node_modules/
+/cloud/signaling/.wrangler/
+/cloud/signaling/.wrangler-config/
+/cloud/signaling/worker-configuration.d.ts
+/dist/
+/.env
+/.env.*
+!.env.example
+*.log

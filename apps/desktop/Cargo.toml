@@ -1,0 +1,22 @@
+[package]
+name = "sparkdesk-desktop"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+build = "build.rs"
+
+[dependencies]
+arboard = "3.7.0"
+directories.workspace = true
+ed25519-dalek.workspace = true
+futures-util.workspace = true
+getrandom.workspace = true
+serde_json.workspace = true
+sparkdesk-protocol = { path = "../../crates/protocol" }
+slint.workspace = true
+tokio.workspace = true
+tokio-tungstenite.workspace = true
+zeroize.workspace = true
+
+[build-dependencies]
+slint-build.workspace = true
