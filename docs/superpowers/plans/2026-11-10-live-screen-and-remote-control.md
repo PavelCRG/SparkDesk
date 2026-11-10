@@ -10,6 +10,33 @@
 
 **Spec:** `docs/superpowers/specs/2026-11-10-live-screen-and-remote-control-design.md`
 
+## What the user should be able to do
+
+1. Enter a partner's ID and request a session.
+2. The partner sees and accepts the request before any screen is shared.
+3. The viewer sees the partner's live Windows desktop.
+4. The partner separately enables remote control; the viewer's own mouse and keyboard then operate that computer.
+5. The partner can revoke control immediately or end the session. Both people can tell whether viewing and control are active.
+
+## Roadmap
+
+| Stage | Deliverable | Continue only when |
+| --- | --- | --- |
+| 1. Prove the existing path | Two local clients show a live screen and pass real input; baseline measurements are recorded. | The basic accept, view, click and type flow works. |
+| 2. Make control dependable | Pointer, keys, consent, revoke and disconnect behave correctly, including held-input cleanup. | No input leaks across a revoke or disconnect. |
+| 3. Make it responsive | Screen delivery is measured and bounded; stale frames are dropped; control stays responsive. | Same-LAN targets below pass, or a separate video-transport decision is ready. |
+| 4. Validate connectivity | Direct and, if needed, TURN-relayed connections work across separate networks. | The actual ICE path is known and documented. |
+| 5. Prepare a release | UI states, keyboard use, security limits and Windows installer are checked end to end. | Every final acceptance item has evidence from real Windows clients. |
+
+Stages are sequential: do not tune frame rate before proving the basic session, and do not claim internet support from a signaling-only or same-LAN test.
+
+## Scope
+
+- First release: Windows host and viewer, one primary monitor, attended sessions, screen viewing and consent-gated mouse/keyboard control.
+- Explicitly out of scope: unattended access, stealth, privilege/UAC bypass, secure desktop control, file transfer, audio and clipboard sync.
+- Internet paths that require TURN are supported only after TURN credentials and relay behavior are configured and tested. Never commit relay credentials.
+- Multi-monitor selection and non-Windows hosts are separate follow-up work; do not imply they are supported by this plan.
+
 ## Baseline
 
 - The code already has separate `screen` and `control` data channels, JPEG capture, Rust input validation, a React viewer, separate local profiles and a host-side control permission.
