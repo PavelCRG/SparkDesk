@@ -35,6 +35,7 @@ export function DeviceCard({ deviceId, copied, t, onCopy }: DeviceCardProps) {
 type ConnectCardProps = {
   inputRef: RefObject<HTMLInputElement | null>;
   peerId: string;
+  fieldError: string;
   pending: boolean;
   sessionActive: boolean;
   t: Translation;
@@ -42,7 +43,7 @@ type ConnectCardProps = {
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 };
 
-export function ConnectCard({ inputRef, peerId, pending, sessionActive, t, onPeerIdChange, onSubmit }: ConnectCardProps) {
+export function ConnectCard({ inputRef, peerId, fieldError, pending, sessionActive, t, onPeerIdChange, onSubmit }: ConnectCardProps) {
   return (
     <Card className="connect-card" variant="surface">
       <div className="card-heading">
@@ -54,6 +55,8 @@ export function ConnectCard({ inputRef, peerId, pending, sessionActive, t, onPee
         <label htmlFor="partner-id">{t.partnerId}</label>
         <TextField.Root
           id="partner-id"
+          name="partner-id"
+          type="text"
           ref={inputRef}
           className="partner-input"
           size="3"
@@ -62,11 +65,14 @@ export function ConnectCard({ inputRef, peerId, pending, sessionActive, t, onPee
           placeholder={t.placeholder}
           autoComplete="off"
           spellCheck={false}
+          aria-invalid={Boolean(fieldError)}
+          aria-describedby="partner-id-error"
         />
-        <Button className="connect-button" size="3" type="submit" disabled={!peerId || pending || sessionActive}>
+        <Button className="connect-button" size="3" type="submit" disabled={pending || sessionActive}>
           {pending ? <LoaderCircle className="spin" size={17} /> : <ArrowUpRight size={17} />}
           {pending ? t.waiting : t.connect}
         </Button>
+        <div className="form-error" id="partner-id-error" role="status" aria-live="polite">{fieldError}</div>
       </form>
       <div className="form-bottom"><span><Keyboard size={13} /> Ctrl+L</span><span>Enter <ArrowUpRight size={12} /></span></div>
     </Card>

@@ -85,13 +85,13 @@
   background: #76828d;
 }
 
-.state-2 .status-dot {
+.state-online .status-dot {
   background: #6bd4a8;
   box-shadow: 0 0 9px #6bd4a866;
 }
 
-.state-1 .status-dot,
-.state-3 .status-dot {
+.state-connecting .status-dot,
+.state-reconnecting .status-dot {
   background: #e4b568;
 }
 

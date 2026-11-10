@@ -8,7 +8,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use tokio::{sync::mpsc, time::timeout};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
-use crate::{AppState, identity::DeviceIdentity, peer::PeerSession};
+use crate::{AppState, NetworkState, NoticeState, identity::DeviceIdentity, peer::PeerSession};
 
 #[derive(Debug)]
 pub enum Command {
@@ -30,7 +30,7 @@ pub fn start(
         {
             Ok(runtime) => runtime,
             Err(error) => {
-                set_notice(&app, 4, error.to_string());
+                set_notice(&app, NoticeState::Error, error.to_string());
                 return;
             }
         };
@@ -39,10 +39,14 @@ pub fn start(
             let mut delay = Duration::from_secs(1);
             loop {
                 match connect_and_wait(&endpoint, &identity, &app, &mut commands).await {
-                    Ok(()) => set_notice(&app, 4, "Signaling server closed the connection".into()),
-                    Err(error) => set_notice(&app, 4, error),
+                    Ok(()) => set_notice(
+                        &app,
+                        NoticeState::Error,
+                        "Signaling server closed the connection".into(),
+                    ),
+                    Err(error) => set_notice(&app, NoticeState::Error, error),
                 }
-                set_network_state(&app, 3);
+                set_network_state(&app, NetworkState::Reconnecting);
                 tokio::time::sleep(delay).await;
                 delay = (delay * 2).min(Duration::from_secs(30));
             }
@@ -67,7 +71,7 @@ async fn connect_and_wait(
         "{endpoint}{separator}v1/signal?device_id={}",
         identity.device_id()
     );
-    set_network_state(app, 1);
+    set_network_state(app, NetworkState::Connecting);
     let (mut socket, _) = connect_async(url)
         .await
         .map_err(|error| error.to_string())?;
@@ -83,22 +87,22 @@ async fn connect_and_wait(
                 match command {
                     Command::Connect(target_id) => {
                         if active.is_some() {
-                            set_notice(app, 4, "End the active session before starting another".into());
+                            set_notice(app, NoticeState::Error, "End the active session before starting another".into());
                             continue;
                         }
                         let request_id = random_id()?;
                         send_message(&mut socket, ClientMessage::JoinRequest { request_id: request_id.clone(), target_id: target_id.clone() }).await?;
                         active = Some((request_id, target_id, None));
-                        set_notice(app, 8, "Sending connection request…".into());
+                        set_notice(app, NoticeState::Pending, "Sending connection request…".into());
                     }
                     Command::Decide { accepted } => {
                         if let Some((request_id, target_id)) = pending_incoming.take() {
                             send_message(&mut socket, ClientMessage::JoinDecision { request_id: request_id.clone(), target_id: target_id.clone(), accepted }).await?;
                             if accepted {
                                 active = Some((request_id, target_id, None));
-                                set_notice(app, 8, "Request accepted; establishing a direct connection…".into());
+                                set_notice(app, NoticeState::Pending, "Request accepted; establishing a direct connection…".into());
                             } else {
-                                set_notice(app, 0, "Connection request declined".into());
+                                set_notice(app, NoticeState::Idle, "Connection request declined".into());
                             }
                         }
                     }
@@ -106,7 +110,7 @@ async fn connect_and_wait(
                         if let Some((request_id, target_id, session)) = active.take() {
                             if let Some(session) = session { session.close().await; }
                             send_message(&mut socket, ClientMessage::EndSession { request_id, target_id }).await?;
-                            set_notice(app, 0, "Session ended".into());
+                            set_notice(app, NoticeState::Idle, "Session ended".into());
                         }
                     }
                 }
@@ -129,19 +133,19 @@ async fn connect_and_wait(
                     }
                     ServerMessage::Authenticated { device_id } if device_id == identity.device_id() => {
                         authenticated = true;
-                        set_network_state(app, 2);
+                        set_network_state(app, NetworkState::Online);
                     }
                     ServerMessage::Authenticated { .. } => return Err("Server returned a different device ID".into()),
                     ServerMessage::IncomingJoin { request_id, from_id } => {
                         if active.is_none() && pending_incoming.is_none() {
                             pending_incoming = Some((request_id, from_id.clone()));
-                            set_notice(app, 3, from_id);
+                            set_notice(app, NoticeState::IncomingRequest, from_id);
                         }
                     }
                     ServerMessage::JoinStatus { request_id, target_id, online } => {
                         if active.as_ref().is_some_and(|(id, peer, _)| id == &request_id && peer == &target_id) {
-                            if online { set_notice(app, 8, "Request delivered; waiting for the other user to accept…".into()); }
-                            else { active = None; set_notice(app, 4, "That device is offline".into()); }
+                            if online { set_notice(app, NoticeState::Pending, "Request delivered; waiting for the other user to accept…".into()); }
+                            else { active = None; set_notice(app, NoticeState::Error, "That device is offline".into()); }
                         }
                     }
                     ServerMessage::JoinDecision { request_id, from_id, accepted } => {
@@ -151,8 +155,8 @@ async fn connect_and_wait(
                                     let (session, offer) = PeerSession::offer().await?;
                                     send_message(&mut socket, ClientMessage::Signal { request_id, target_id: from_id, payload: SignalPayload::Offer { sdp: offer } }).await?;
                                     active = Some((id.clone(), target.clone(), Some(session)));
-                                    set_notice(app, 8, "Creating a secure direct connection…".into());
-                                } else { active = None; set_notice(app, 4, "Connection request declined".into()); }
+                                    set_notice(app, NoticeState::Pending, "Creating a secure direct connection…".into());
+                                } else { active = None; set_notice(app, NoticeState::Error, "Connection request declined".into()); }
                             }
                         }
                     }
@@ -164,7 +168,7 @@ async fn connect_and_wait(
                                         let (session, answer) = PeerSession::answer(&sdp).await?;
                                         send_message(&mut socket, ClientMessage::Signal { request_id, target_id: from_id, payload: SignalPayload::Answer { sdp: answer } }).await?;
                                         active = Some((id.clone(), target.clone(), Some(session)));
-                                        set_notice(app, 8, "Negotiating direct connection…".into());
+                                        set_notice(app, NoticeState::Pending, "Negotiating direct connection…".into());
                                     }
                                     SignalPayload::Answer { sdp } => if let Some(session) = session { session.set_answer(&sdp).await?; },
                                     SignalPayload::IceCandidate { .. } => {}
@@ -173,16 +177,20 @@ async fn connect_and_wait(
                         }
                     }
                     ServerMessage::SessionEnded { request_id, .. } => {
-                        if active.as_ref().is_some_and(|(id, _, _)| id == &request_id) { active = None; set_notice(app, 0, "Session ended".into()); }
+                        if active.as_ref().is_some_and(|(id, _, _)| id == &request_id) { active = None; set_notice(app, NoticeState::Idle, "Session ended".into()); }
                     }
-                    ServerMessage::Error { .. } => set_notice(app, 4, "Signaling server rejected the request".into()),
+                    ServerMessage::Error { .. } => set_notice(app, NoticeState::Error, "Signaling server rejected the request".into()),
                 }
             }
             _ = connection_poll.tick() => {}
         }
         if let Some((_, _, Some(session))) = &active {
             if session.is_connected() {
-                set_notice(app, 9, "Direct connection established".into());
+                set_notice(
+                    app,
+                    NoticeState::Connected,
+                    "Direct connection established".into(),
+                );
             }
         }
     }
@@ -247,11 +255,11 @@ fn update_status(app: &AppHandle, update: impl FnOnce(&mut crate::AppStatus)) {
     }
 }
 
-fn set_network_state(app: &AppHandle, network_state: i32) {
+fn set_network_state(app: &AppHandle, network_state: NetworkState) {
     update_status(app, |status| status.network_state = network_state);
 }
 
-fn set_notice(app: &AppHandle, notice_state: i32, detail: String) {
+fn set_notice(app: &AppHandle, notice_state: NoticeState, detail: String) {
     update_status(app, |status| {
         status.notice_state = notice_state;
         status.detail = detail;

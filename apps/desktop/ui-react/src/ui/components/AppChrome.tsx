@@ -1,16 +1,22 @@
 import { ArrowDownLeft, Globe2 } from "lucide-react";
 import { Badge, IconButton, Tooltip } from "@radix-ui/themes";
 import type { Language, Translation } from "../copy";
+import type { NetworkState } from "../types";
 
 type AppHeaderProps = {
   language: Language;
-  networkState: number;
+  networkState: NetworkState;
   t: Translation;
   onLanguageChange: () => void;
 };
 
 export function AppHeader({ language, networkState, t, onLanguageChange }: AppHeaderProps) {
-  const networkLabel = [t.notConfigured, t.serverConnecting, t.online, t.reconnecting][networkState] ?? t.offline;
+  const networkLabel: Record<NetworkState, string> = {
+    not_configured: t.notConfigured,
+    connecting: t.serverConnecting,
+    online: t.online,
+    reconnecting: t.reconnecting,
+  };
 
   return (
     <header className="topbar">
@@ -20,7 +26,7 @@ export function AppHeader({ language, networkState, t, onLanguageChange }: AppHe
       </a>
       <div className="topbar-actions">
         <Badge className={`network-badge state-${networkState}`} variant="soft" radius="full">
-          <span className="status-dot" />{networkLabel}
+          <span className="status-dot" />{networkLabel[networkState]}
         </Badge>
         <Tooltip content={language === "ru" ? "Switch to English" : "Переключить на русский"}>
           <IconButton className="language-button" variant="ghost" color="gray" aria-label={t.switchLanguage} onClick={onLanguageChange}>

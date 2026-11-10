@@ -9,18 +9,19 @@ import { TrustStrip } from "./components/TrustStrip";
 import { copy, type Language } from "./copy";
 import type { AppStatus } from "./types";
 
-const emptyStatus: AppStatus = { deviceId: "", networkState: 0, noticeState: 0, detail: "" };
+const emptyStatus: AppStatus = { deviceId: "", networkState: "not_configured", noticeState: "idle", detail: "" };
 
 export function App() {
   const [language, setLanguage] = useState<Language>("ru");
   const [status, setStatus] = useState(emptyStatus);
   const [peerId, setPeerId] = useState("");
+  const [partnerError, setPartnerError] = useState("");
   const [message, setMessage] = useState("");
   const [copied, setCopied] = useState(false);
   const partnerInput = useRef<HTMLInputElement>(null);
   const t = copy[language];
-  const sessionActive = status.noticeState === 9;
-  const pending = status.noticeState === 8;
+  const sessionActive = status.noticeState === "connected";
+  const pending = status.noticeState === "pending";
 
   useEffect(() => {
     document.documentElement.lang = language;
@@ -58,13 +59,18 @@ export function App() {
     event.preventDefault();
     const normalized = peerId.trim().toUpperCase();
     if (!/^[0-9A-F]{24}$/.test(normalized)) {
+      setPartnerError(t.invalidId);
       setMessage(t.invalidId);
+      partnerInput.current?.focus();
       return;
     }
     if (normalized === status.deviceId) {
+      setPartnerError(t.sameDevice);
       setMessage(t.sameDevice);
+      partnerInput.current?.focus();
       return;
     }
+    setPartnerError("");
     setMessage("");
     try {
       await invoke("connect", { peerId: normalized });
@@ -72,6 +78,12 @@ export function App() {
       setMessage(typeof error === "string" ? error : t.requestError);
     }
   }, [peerId, status.deviceId, t.invalidId, t.requestError, t.sameDevice]);
+
+  const updatePeerId = useCallback((value: string) => {
+    setPeerId(value.toUpperCase().replace(/[^0-9A-F]/g, "").slice(0, 24));
+    setPartnerError("");
+    setMessage("");
+  }, []);
 
   const copyId = useCallback(async () => {
     try {
@@ -126,10 +138,11 @@ export function App() {
           <ConnectCard
             inputRef={partnerInput}
             peerId={peerId}
+            fieldError={partnerError}
             pending={pending}
             sessionActive={sessionActive}
             t={t}
-            onPeerIdChange={(value) => setPeerId(value.toUpperCase().replace(/[^0-9A-F]/g, "").slice(0, 24))}
+            onPeerIdChange={updatePeerId}
             onSubmit={(event) => void submit(event)}
           />
         </section>

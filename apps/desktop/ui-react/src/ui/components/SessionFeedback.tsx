@@ -13,10 +13,10 @@ type SessionFeedbackProps = {
 };
 
 export function SessionFeedback({ status, message, t, onDecide, onDisconnect, onDismiss }: SessionFeedbackProps) {
-  const sessionActive = status.noticeState === 9;
-  const pending = status.noticeState === 8;
-  const incoming = status.noticeState === 3;
-  const hasFeedback = Boolean(message) || status.noticeState === 4 || pending || sessionActive;
+  const sessionActive = status.noticeState === "connected";
+  const pending = status.noticeState === "pending";
+  const incoming = status.noticeState === "incoming_request";
+  const hasFeedback = Boolean(message) || status.noticeState === "error" || pending || sessionActive;
 
   return (
     <>

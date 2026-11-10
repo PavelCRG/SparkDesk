@@ -11,9 +11,28 @@ mod signaling;
 #[serde(rename_all = "camelCase")]
 pub struct AppStatus {
     pub device_id: String,
-    pub network_state: i32,
-    pub notice_state: i32,
+    pub network_state: NetworkState,
+    pub notice_state: NoticeState,
     pub detail: String,
+}
+
+#[derive(Clone, Copy, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NetworkState {
+    NotConfigured,
+    Connecting,
+    Online,
+    Reconnecting,
+}
+
+#[derive(Clone, Copy, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NoticeState {
+    Idle,
+    IncomingRequest,
+    Error,
+    Pending,
+    Connected,
 }
 
 pub struct AppState {
@@ -85,8 +104,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         signaling_configured,
         status: Mutex::new(AppStatus {
             device_id,
-            network_state: if signaling_configured { 1 } else { 0 },
-            notice_state: 0,
+            network_state: if signaling_configured {
+                NetworkState::Connecting
+            } else {
+                NetworkState::NotConfigured
+            },
+            notice_state: NoticeState::Idle,
             detail: String::new(),
         }),
     };
@@ -108,4 +131,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ])
         .run(tauri::generate_context!())?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AppStatus, NetworkState, NoticeState};
+
+    #[test]
+    fn app_status_uses_named_states_in_the_frontend_contract() {
+        let status = AppStatus {
+            device_id: "0123456789ABCDEF01234567".into(),
+            network_state: NetworkState::Online,
+            notice_state: NoticeState::IncomingRequest,
+            detail: String::new(),
+        };
+
+        let value = serde_json::to_value(status).unwrap();
+        assert_eq!(value["networkState"], "online");
+        assert_eq!(value["noticeState"], "incoming_request");
+    }
 }

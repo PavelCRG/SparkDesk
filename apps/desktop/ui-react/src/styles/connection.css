@@ -136,6 +136,19 @@
   font-weight: 550;
 }
 
+.form-error {
+  grid-column: 1 / -1;
+  min-height: 1.4em;
+  margin-top: 2px;
+  color: #f09a94;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.form-error:empty {
+  visibility: hidden;
+}
+
 .partner-input input {
   height: 43px;
   border-color: #2a3743 !important;
