@@ -2,7 +2,11 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { Theme } from "@radix-ui/themes";
 import "@radix-ui/themes/styles.css";
-import "./styles.css";
+import "./styles/base.css";
+import "./styles/shell.css";
+import "./styles/connection.css";
+import "./styles/feedback.css";
+import "./styles/responsive.css";
 import { App } from "./ui/App";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(

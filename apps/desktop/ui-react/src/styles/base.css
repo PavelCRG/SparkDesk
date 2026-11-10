@@ -1,0 +1,35 @@
+:root {
+  font-family: Inter, "Segoe UI", sans-serif;
+  color: #e8edf2;
+  background: #0d1218;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-optical-sizing: auto;
+  font-size: 14px;
+  font-weight: 400;
+  --line: #26323e;
+  --mint: #74d8b0;
+  --blue: #91baf2;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 820px;
+  min-height: 100vh;
+  margin: 0;
+  background: #0d1218;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  -webkit-tap-highlight-color: transparent;
+}

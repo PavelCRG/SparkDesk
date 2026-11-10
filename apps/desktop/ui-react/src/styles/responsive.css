@@ -1,0 +1,99 @@
+@media (max-width: 960px) {
+  .main-content {
+    width: min(100% - 48px, 760px);
+    padding-top: 52px;
+  }
+
+  .connection-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .device-card,
+  .connect-card {
+    min-height: unset;
+  }
+
+  .trust-strip {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .trust-divider {
+    display: none;
+  }
+
+  .shortcut-list {
+    width: calc(100% - 48px);
+    grid-template-columns: 1fr 1fr;
+    margin-left: 48px;
+  }
+}
+
+@media (max-width: 540px) {
+  body {
+    min-width: 360px;
+  }
+
+  .topbar {
+    padding: 0 18px;
+  }
+
+  .main-content {
+    width: calc(100% - 32px);
+    padding-top: 42px;
+  }
+
+  .intro {
+    margin-bottom: 29px;
+  }
+
+  .hero-title {
+    font-size: 38px !important;
+    letter-spacing: -1.8px !important;
+  }
+
+  .hero-copy {
+    font-size: 12px;
+  }
+
+  .device-card,
+  .connect-card {
+    padding: 18px !important;
+  }
+
+  .device-id-row code {
+    font-size: 13px;
+    letter-spacing: .6px;
+  }
+
+  .secure-badge {
+    display: none;
+  }
+
+  .connect-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .connect-button {
+    width: 100%;
+  }
+
+  .trust-strip {
+    gap: 10px;
+    padding: 13px;
+  }
+
+  .trust-copy {
+    width: calc(100% - 48px);
+  }
+
+  .shortcut-list {
+    gap: 7px;
+    margin-left: 45px;
+  }
+
+  .app-footer {
+    padding: 0 16px;
+    font-size: 8px;
+  }
+}

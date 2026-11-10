@@ -1,0 +1,196 @@
+.connection-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 17px;
+}
+
+.device-card,
+.connect-card {
+  min-height: 257px;
+  padding: 23px !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 15px !important;
+  background: rgba(20, 27, 35, .92) !important;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, .12);
+}
+
+.card-heading {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 12px;
+}
+
+.icon-tile {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 11px;
+}
+
+.icon-tile-blue {
+  border: 1px solid #2b4058;
+  background: #1b2a3a;
+  color: var(--blue);
+}
+
+.icon-tile-green {
+  border: 1px solid #2a4840;
+  background: #1c302c;
+  color: var(--mint);
+}
+
+.card-kicker {
+  display: block;
+  margin-bottom: 3px;
+  color: #7f8e9b !important;
+  font-size: 9px !important;
+  font-weight: 700 !important;
+  letter-spacing: 1px;
+}
+
+.card-heading h2 {
+  color: #e3e9ee !important;
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  letter-spacing: -.1px;
+}
+
+.secure-badge {
+  display: inline-flex;
+  margin-left: auto;
+  gap: 5px;
+  padding: 5px 7px;
+  font-size: 8px;
+  letter-spacing: .45px;
+}
+
+.card-caption {
+  display: block;
+  margin: 25px 0 8px !important;
+  color: #9aa6b0 !important;
+  font-size: 11px !important;
+}
+
+.device-id-row {
+  display: flex;
+  height: 48px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 8px 0 14px;
+  border: 1px solid #2a3743;
+  border-radius: 9px;
+  background: #10161d;
+}
+
+.device-id-row code {
+  color: #e9eff4;
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 1.1px;
+  white-space: nowrap;
+}
+
+.copy-button {
+  width: 34px;
+  height: 32px;
+  border-radius: 7px;
+  transition: transform 150ms cubic-bezier(.23, 1, .32, 1);
+}
+
+.device-footnote {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 17px;
+  color: #80908f;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.device-footnote svg {
+  flex: 0 0 auto;
+  color: #73c8a5;
+}
+
+.connect-caption {
+  margin-top: 17px !important;
+  margin-bottom: 14px !important;
+}
+
+.connect-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 139px;
+  align-items: end;
+  gap: 8px 10px;
+}
+
+.connect-form label {
+  grid-column: 1 / -1;
+  color: #b8c2cb;
+  font-size: 11px;
+  font-weight: 550;
+}
+
+.partner-input input {
+  height: 43px;
+  border-color: #2a3743 !important;
+  background: #10161d !important;
+  color: #eaf0f4 !important;
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 12px !important;
+  letter-spacing: .1px;
+}
+
+.partner-input input::placeholder {
+  color: #576572;
+  font-family: "Segoe UI", sans-serif;
+  font-size: 11px;
+  letter-spacing: 0;
+}
+
+.connect-button {
+  height: 43px;
+  gap: 8px;
+  background: #65c9a0 !important;
+  color: #0b1b16 !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  transition: transform 150ms cubic-bezier(.23, 1, .32, 1), background-color 150ms ease;
+}
+
+@media (hover: hover) {
+  .connect-button:not(:disabled):hover {
+    background: #7cdbb4 !important;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .copy-button:not(:disabled):active,
+  .connect-button:not(:disabled):active {
+    transform: scale(.96);
+  }
+}
+
+.connect-button:disabled {
+  background: #31433e !important;
+  color: #849b91 !important;
+}
+
+.form-bottom {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 12px;
+  color: #71808d;
+  font-size: 9px;
+}
+
+.form-bottom span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
