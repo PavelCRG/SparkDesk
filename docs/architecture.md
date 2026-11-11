@@ -12,8 +12,8 @@ Provide account-free remote support: enter a device ID, let the owner approve th
 - Ed25519 device identity stored in the OS user configuration directory.
 - A Rust workspace crate for the shared signaling protocol.
 - Cloudflare Worker + Durable Objects for the initial hosted signaling experiment.
-- Tokio and a Rust WebRTC implementation are candidates for the desktop transport; prove the media path before committing to capture and codec choices.
-- Windows capture and input adapters first, behind platform boundaries.
+- Tokio and Rust WebRTC provide direct peer transport through separate screen and control data channels.
+- Windows capture and input use `xcap` and documented `SendInput` behavior. The Rust boundary validates control messages before dispatch.
 
 ## Connection flow
 
@@ -51,4 +51,10 @@ cloud/signaling/    Worker and per-device Durable Object
 docs/               Architecture and implementation plan
 ```
 
-The desktop can connect to a configured signaling endpoint, authenticate its key, send/approve connection requests and negotiate a direct WebRTC data-channel connection. Screen capture, remote input, TURN relay, deployment and real two-PC verification remain future work.
+## Current implementation and limits
+
+The desktop captures the primary Windows monitor after approval, scales frames to at most 1280×720, JPEG-encodes them and sends them over an unordered, zero-retransmit WebRTC data channel. Capture is scheduled at up to 60 frames per second with a bounded send backlog; this is a requested rate, not a measured viewer frame rate.
+
+The viewer displays the newest decoded frame in a canvas. Mouse and keyboard events travel on a separate reliable channel, and the host applies them through `SendInput` only after the host enables control. The host can revoke permission, and held inputs are released on revoke or session end. Windows still blocks synthetic input into elevated applications and secure desktops.
+
+The signaling service uses a configured WebSocket endpoint and coordinates presence and session setup. The peer connection currently uses STUN without TURN, so some NAT and firewall combinations cannot connect. Two-computer performance, internet reachability, installer behavior and sustained-session resource use still need measured Windows runs before SparkDesk can claim release readiness.

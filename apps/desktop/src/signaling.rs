@@ -1,4 +1,7 @@
-use std::{thread, time::Duration};
+use std::{
+    thread,
+    time::{Duration, Instant},
+};
 
 use futures_util::{SinkExt, StreamExt};
 use sparkdesk_protocol::{
@@ -12,6 +15,8 @@ use crate::{
     AppState, NetworkState, NoticeState, SessionRole, identity::DeviceIdentity, input::RemoteInput,
     peer::PeerSession,
 };
+
+const SESSION_SETUP_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[derive(Debug)]
 pub enum Command {
@@ -27,6 +32,13 @@ struct ActiveSession {
     remote_id: String,
     initiator_id: String,
     peer: Option<PeerSession>,
+    setup_deadline: Instant,
+}
+
+struct PendingIncoming {
+    request_id: String,
+    remote_id: String,
+    expires_at: Instant,
 }
 
 pub fn start(
@@ -94,7 +106,7 @@ async fn connect_and_wait(
         .await
         .map_err(|error| error.to_string())?;
     let mut active: Option<ActiveSession> = None;
-    let mut pending_incoming: Option<(String, String)> = None;
+    let mut pending_incoming: Option<PendingIncoming> = None;
     let mut authenticated = false;
     let mut connection_poll = tokio::time::interval(Duration::from_millis(300));
 
@@ -115,19 +127,21 @@ async fn connect_and_wait(
                             remote_id: target_id,
                             initiator_id: identity.device_id().to_owned(),
                             peer: None,
+                            setup_deadline: Instant::now() + SESSION_SETUP_TIMEOUT,
                         });
                         set_session_role(app, SessionRole::Viewer);
                         set_notice(app, NoticeState::Pending, "Sending connection request…".into());
                     }
                     Command::Decide { accepted } => {
-                        if let Some((request_id, target_id)) = pending_incoming.take() {
-                            send_message(&mut socket, ClientMessage::JoinDecision { request_id: request_id.clone(), target_id: target_id.clone(), accepted }).await?;
+                        if let Some(incoming) = pending_incoming.take() {
+                            send_message(&mut socket, ClientMessage::JoinDecision { request_id: incoming.request_id.clone(), target_id: incoming.remote_id.clone(), accepted }).await?;
                             if accepted {
                                 active = Some(ActiveSession {
-                                    request_id,
-                                    remote_id: target_id.clone(),
-                                    initiator_id: target_id,
+                                    request_id: incoming.request_id,
+                                    remote_id: incoming.remote_id.clone(),
+                                    initiator_id: incoming.remote_id,
                                     peer: None,
+                                    setup_deadline: Instant::now() + SESSION_SETUP_TIMEOUT,
                                 });
                                 set_session_role(app, SessionRole::Host);
                                 set_notice(app, NoticeState::Pending, "Request accepted; establishing a direct connection…".into());
@@ -180,7 +194,11 @@ async fn connect_and_wait(
                     ServerMessage::Authenticated { .. } => return Err("Server returned a different device ID".into()),
                     ServerMessage::IncomingJoin { request_id, from_id } => {
                         if active.is_none() && pending_incoming.is_none() {
-                            pending_incoming = Some((request_id, from_id.clone()));
+                            pending_incoming = Some(PendingIncoming {
+                                request_id,
+                                remote_id: from_id.clone(),
+                                expires_at: Instant::now() + SESSION_SETUP_TIMEOUT,
+                            });
                             set_notice(app, NoticeState::IncomingRequest, from_id);
                         }
                     }
@@ -259,10 +277,57 @@ async fn connect_and_wait(
                             set_notice(app, NoticeState::Idle, "Session ended".into());
                         }
                     }
-                    ServerMessage::Error { .. } => set_notice(app, NoticeState::Error, "Signaling server rejected the request".into()),
+                    ServerMessage::Error { .. } => {
+                        if let Some(session) = active.take() {
+                            app.state::<AppState>().control_allowed.store(false, std::sync::atomic::Ordering::Release);
+                            if let Some(peer) = session.peer { peer.close().await; }
+                            set_session_role(app, SessionRole::None);
+                        }
+                        pending_incoming = None;
+                        set_notice(app, NoticeState::Error, "Signaling server rejected the request".into());
+                    }
                 }
             }
             _ = connection_poll.tick() => {}
+        }
+        let now = Instant::now();
+        if pending_incoming
+            .as_ref()
+            .is_some_and(|incoming| now >= incoming.expires_at)
+        {
+            pending_incoming = None;
+            set_notice(
+                app,
+                NoticeState::Idle,
+                "The connection request expired".into(),
+            );
+        }
+        if active.as_ref().is_some_and(|session| {
+            let connected = session.peer.as_ref().is_some_and(PeerSession::is_connected);
+            setup_timed_out(session.setup_deadline, connected, now)
+        }) {
+            if let Some(session) = active.take() {
+                app.state::<AppState>()
+                    .control_allowed
+                    .store(false, std::sync::atomic::Ordering::Release);
+                if let Some(peer) = session.peer {
+                    peer.close().await;
+                }
+                let _ = send_message(
+                    &mut socket,
+                    ClientMessage::EndSession {
+                        request_id: session.request_id,
+                        target_id: session.remote_id,
+                    },
+                )
+                .await;
+            }
+            set_session_role(app, SessionRole::None);
+            set_notice(
+                app,
+                NoticeState::Error,
+                "The connection timed out. Try again.".into(),
+            );
         }
         let peer_failed = active
             .as_ref()
@@ -323,6 +388,10 @@ fn random_id() -> Result<String, String> {
     let mut bytes = [0u8; 16];
     getrandom::fill(&mut bytes).map_err(|error| error.to_string())?;
     Ok(encode_hex(&bytes))
+}
+
+fn setup_timed_out(deadline: Instant, connected: bool, now: Instant) -> bool {
+    !connected && now >= deadline
 }
 
 fn decode_hex(value: &str) -> Option<Vec<u8>> {
@@ -386,4 +455,24 @@ fn set_notice(app: &AppHandle, notice_state: NoticeState, detail: String) {
         status.notice_state = notice_state;
         status.detail = detail;
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::setup_timed_out;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn setup_timeout_expires_only_unconnected_sessions() {
+        let now = Instant::now();
+        let deadline = now + Duration::from_secs(60);
+
+        assert!(!setup_timed_out(deadline, false, now));
+        assert!(setup_timed_out(deadline, false, deadline));
+        assert!(!setup_timed_out(
+            deadline,
+            true,
+            deadline + Duration::from_secs(1)
+        ));
+    }
 }
