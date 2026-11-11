@@ -62,8 +62,15 @@ Stages are sequential: do not tune frame rate before proving the basic session, 
 - Added held-input release tests; if Windows rejects a key/button-up event, SparkDesk retains that held input for retry on the next permission poll.
 - Added `docs/remote-control-validation.md` with source-configured values and an explicit pending row for real measurements. No hardware, FPS or latency results were fabricated.
 - Rechecked README claims: Windows primary-monitor scope, separate host consent, direct ICE with no TURN configuration, and protected Windows surfaces are documented.
-- `cargo fmt --all -- --check`, `cargo test --workspace --offline` (31 tests), `cargo build -p sparkdesk-desktop --offline`, and the React production build pass. NSIS packaging succeeded before these latest code changes; it must be rebuilt before install verification. MSI packaging fails with WiX `LGHT0217` because Windows Installer Service is unavailable here. The NSIS installer was not installed.
+- `cargo fmt --all -- --check`, `cargo test --workspace --offline` (33 tests), `cargo build -p sparkdesk-desktop --offline`, and the React production build pass. NSIS packaging succeeded before these latest code changes; it must be rebuilt before install verification. MSI packaging fails with WiX `LGHT0217` because Windows Installer Service is unavailable here. The NSIS installer was not installed.
 - The live two-window interaction gate could not be performed in this execution environment: launched backend processes connected to signaling, but no interactive windows were exposed. Therefore the release gates remain open for real screen/input interaction, measured performance, separate-network ICE, soak, and fresh-install evidence. Do not treat this record as a release sign-off.
+
+## Remaining acceptance gates (2026-11-11)
+
+- **Tasks 1–2:** The two-client accept/view/control flow and pointer, keyboard, revoke, disconnect and focus-loss behavior still need an interactive Windows run. Earlier launches connected to signaling but exposed no interactive windows, so no input actions or frame results are claimed.
+- **Tasks 3–4:** Instrumentation and code-level pointer mapping checks are present. Measured 1280×720 stage timings, 60-second displayed FPS/RTT/CPU, resized/letterboxed corner mapping, full-screen behavior and keyboard-only navigation still need a live viewer/host run.
+- **Task 5:** Source configuration is Cloudflare STUN only, with no TURN settings. Same-LAN and separate-network candidate pairs are not recorded; TURN implementation stays conditional on a measured direct-connect failure.
+- **Task 6:** Code-level security checks and builds are recorded. Consent/revoke behavior, a 10-minute session and a fresh installer install/launch remain unverified; the prior NSIS artifact predates the current code.
 
 ## Global Constraints
 
@@ -108,6 +115,7 @@ Targets are a test gate, not a guarantee over arbitrary internet links. A 60 Hz 
 - [x] Add bounded diagnostic counters for capture/resize/encode duration, bytes per frame, frame IDs sent/received/rendered, dropped/incomplete chunks, input send/dispatch/ack and connection state. Keep diagnostics local; never record frame contents, typed text or device secrets.
 - [x] Add an input acknowledgement carrying a per-session sequence number after host validation and OS dispatch. The viewer measures round-trip with its monotonic clock; it does not compare unsynchronized host/viewer clocks.
 - [ ] Write the baseline to a new `docs/remote-control-validation.md` with the machine/network details and measured p50/p95 values.
+  - [x] Added the report and recorded configured limits; real hardware, path and percentile results remain pending.
 - [x] Update the spec's `Current state` and transport limits to describe the implemented code and remaining non-goals.
 - [x] Run `cargo test --workspace --offline` and `npm --prefix apps/desktop/ui-react run build`.
 
@@ -158,6 +166,7 @@ Targets are a test gate, not a guarantee over arbitrary internet links. A 60 Hz 
 **Files:** `apps/desktop/src/peer.rs`, `apps/desktop/src/signaling.rs`, `apps/desktop/tauri.conf.json` or existing runtime configuration, `README.md`, `docs/remote-control-validation.md`.
 
 - [ ] Inspect the current ICE server configuration and record the selected candidate pair for each test; do not infer direct versus relayed transport from a successful signaling connection.
+  - [x] Confirmed the current code configures Cloudflare STUN only and has no TURN configuration; no candidate pair can be recorded before live network tests.
 - [ ] Test two computers on the same LAN, then two computers on separate networks. Record connection setup time, selected ICE path, frame rate and input RTT.
 - [ ] If separate-network direct ICE fails, add and run a failing Rust test named `ice_configuration_requires_credentials_for_turn_servers` for valid STUN, valid TURN and missing TURN credentials.
 - [ ] Implement configurable STUN/TURN server settings and short-lived TURN credentials without hard-coded secrets; keep signaling free of screen payloads.
@@ -170,11 +179,11 @@ Targets are a test gate, not a guarantee over arbitrary internet links. A 60 Hz 
 
 **Files:** relevant tests under `apps/desktop/src`, `apps/desktop/ui-react`, `README.md`, `docs/remote-control-validation.md`.
 
-- [ ] Verify forged identity, invalid session proof, malformed/oversized frames, unknown key/button, input flood and frame flood cannot grant capability, panic or grow memory without bound.
+- [x] Verify the Rust boundary tests reject forged identity/session proof, malformed/oversized frames, unknown keys/buttons and input floods; frame-flood tests confirm malformed frames retain no state and incomplete-frame floods retain one bounded frame.
 - [ ] Verify decline sends no screen frames; control starts off; revoke stops input immediately while viewing may continue; disconnect stops capture and releases all held inputs.
 - [ ] Run a 10-minute two-PC session while moving the pointer and typing; record frame rate, RTT, memory and CPU, and confirm the UI remains responsive.
-- [ ] Run `cargo fmt --all -- --check`, `cargo test --workspace --offline`, `cargo build -p sparkdesk-desktop --offline`, and `npm --prefix apps/desktop/ui-react run build`.
+- [x] Run `cargo fmt --all -- --check`, `cargo test --workspace --offline`, `cargo build -p sparkdesk-desktop --offline`, and `npm --prefix apps/desktop/ui-react run build` (code verification only; no two-client acceptance implied).
 - [ ] Build the existing Windows installer target and verify fresh install, first launch and normal-size startup without reusing the development profile or credentials.
-- [ ] Update README with supported Windows behavior and explicit limitations, including UIPI/secure desktop and any direct-only network restriction.
+- [x] README documents attended Windows sharing, owner consent, separate control permission, direct-only connectivity without TURN, and Windows protected-surface limitations.
 
 **Definition of done:** All gates above have recorded evidence from real Windows clients. A successful compile, browser preview, or single-process test alone does not complete this plan.

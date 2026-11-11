@@ -297,8 +297,8 @@ impl FrameAssembler {
 #[cfg(test)]
 mod tests {
     use super::{
-        FrameAssembler, SCREEN_FRAME_INTERVAL, ScreenFrame, can_capture_screen_frame, chunk_frame,
-        chunk_frame_iter, frame_wire_size, validate_jpeg,
+        CHUNK_BYTES, FrameAssembler, MAX_FRAME_BYTES, SCREEN_FRAME_INTERVAL, ScreenFrame,
+        can_capture_screen_frame, chunk_frame, chunk_frame_iter, frame_wire_size, validate_jpeg,
     };
     use image::{ColorType, codecs::jpeg::JpegEncoder};
     use std::io::Cursor;
@@ -334,6 +334,38 @@ mod tests {
         };
         assert!(chunk_frame(&frame).is_err());
         assert!(FrameAssembler::default().push(b"bad").is_err());
+    }
+
+    #[test]
+    fn malformed_frame_flood_is_rejected_without_retaining_partial_state() {
+        let mut assembler = FrameAssembler::default();
+        for _ in 0..10_000 {
+            assert!(assembler.push(b"bad").is_err());
+        }
+        assert!(assembler.current.is_none());
+    }
+
+    #[test]
+    fn incomplete_frame_flood_retains_only_one_bounded_frame() {
+        let frame = ScreenFrame {
+            id: 0,
+            width: 1280,
+            height: 720,
+            jpeg: vec![7; MAX_FRAME_BYTES],
+        };
+        let mut first_chunk = chunk_frame_iter(&frame).unwrap().next().unwrap();
+        let expected_chunks = MAX_FRAME_BYTES.div_ceil(CHUNK_BYTES);
+        let mut assembler = FrameAssembler::default();
+
+        for id in 0..1_000u32 {
+            first_chunk[3..7].copy_from_slice(&id.to_be_bytes());
+            assert_eq!(assembler.push(&first_chunk).unwrap(), None);
+            let current = assembler.current.as_ref().unwrap();
+            assert_eq!(current.id, id);
+            assert_eq!(current.chunks.len(), expected_chunks);
+            assert_eq!(current.received_bytes, CHUNK_BYTES);
+        }
+        assert_eq!(assembler.incomplete_frames_dropped(), 999);
     }
 
     #[test]
