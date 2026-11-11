@@ -309,6 +309,12 @@ mod tests {
     }
 
     #[test]
+    fn frame_send_policy_pauses_capture_when_channel_is_backlogged() {
+        assert!(!can_capture_screen_frame(256 * 1024));
+        assert!(can_capture_screen_frame(0));
+    }
+
+    #[test]
     fn lazy_screen_chunks_match_the_existing_wire_format() {
         let frame = ScreenFrame {
             id: 9,
@@ -349,6 +355,34 @@ mod tests {
         }
         assert_eq!(result, Some(newer));
         assert!(assembler.push(&older_chunks[0]).is_err());
+    }
+
+    #[test]
+    fn frame_assembler_discards_superseded_incomplete_frame() {
+        let older = ScreenFrame {
+            id: 1,
+            width: 1280,
+            height: 720,
+            jpeg: vec![1; 35_000],
+        };
+        let newer = ScreenFrame {
+            id: 2,
+            width: 1280,
+            height: 720,
+            jpeg: vec![2; 35_000],
+        };
+        let older_chunks = chunk_frame(&older).unwrap();
+        let newer_chunks = chunk_frame(&newer).unwrap();
+        let mut assembler = FrameAssembler::default();
+
+        assert_eq!(assembler.push(&older_chunks[0]).unwrap(), None);
+        assert_eq!(assembler.push(&newer_chunks[0]).unwrap(), None);
+        assert!(assembler.push(&older_chunks[1]).is_err());
+        let mut completed = None;
+        for chunk in &newer_chunks[1..] {
+            completed = assembler.push(chunk).unwrap().or(completed);
+        }
+        assert_eq!(completed, Some(newer));
     }
 
     #[test]

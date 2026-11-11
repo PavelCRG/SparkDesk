@@ -53,6 +53,14 @@ Stages are sequential: do not tune frame rate before proving the basic session, 
 - These are code-level changes, not performance evidence. No desktop app was launched and no two-machine session, 60-second FPS run, input RTT measurement, TURN path test, ten-minute soak or installer verification was performed. Keep those gates open until the runs have recorded results.
 - The 60 FPS and 50 ms p95 targets remain goals to measure, not claims about current performance. JPEG encoding, CPU, network bandwidth, base64 conversion and React rendering may keep the current path below target; if so, use measured data to decide whether a video transport is needed.
 
+## Execution record (2026-11-11)
+
+- Added regression coverage for pausing capture at the existing screen-channel backlog threshold and for replacing an incomplete frame with a newer frame. The implementation already had both behaviors; tests confirm them, so no transport tuning was justified without the live baseline.
+- Added `docs/remote-control-validation.md` with source-configured values and an explicit pending row for real measurements. No hardware, FPS or latency results were fabricated.
+- Rechecked README claims: Windows primary-monitor scope, separate host consent, direct ICE with no TURN configuration, and protected Windows surfaces are documented.
+- `cargo fmt --all -- --check`, `cargo test --workspace --offline` (25 tests), `cargo build -p sparkdesk-desktop --offline`, and the React production build pass. NSIS packaging succeeds; MSI packaging fails with WiX `LGHT0217` because Windows Installer Service is unavailable here. The NSIS installer was not installed.
+- The live two-window interaction gate could not be performed in this execution environment: launched backend processes connected to signaling, but no interactive windows were exposed. Therefore the release gates remain open for real screen/input interaction, measured performance, separate-network ICE, soak, and fresh-install evidence. Do not treat this record as a release sign-off.
+
 ## Global Constraints
 
 - A device ID locates a peer; it never grants screen or input access.
