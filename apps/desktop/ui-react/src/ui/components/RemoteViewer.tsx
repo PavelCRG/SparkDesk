@@ -23,9 +23,10 @@ function point(event: PointerEvent<HTMLElement> | WheelEvent<HTMLElement>, image
   const top = rect.top + (rect.height - contentHeight) / 2;
   const x = contentWidth ? (event.clientX - left) / contentWidth : 0;
   const y = contentHeight ? (event.clientY - top) / contentHeight : 0;
+  if (x < 0 || x > 1 || y < 0 || y > 1) return null;
   return {
-    x: Math.max(0, Math.min(65535, Math.round(x * 65535))),
-    y: Math.max(0, Math.min(65535, Math.round(y * 65535))),
+    x: Math.round(x * 65535),
+    y: Math.round(y * 65535),
   };
 }
 
@@ -113,7 +114,9 @@ export function RemoteViewer({ controlEnabled, fullscreen, t, onInput, onFrameRa
 
   const movePointer = (event: PointerEvent<HTMLDivElement>) => {
     if (!controlEnabled || !hasRenderedFrame.current) return;
-    pendingPointer.current = point(event, canvas.current);
+    const coordinates = point(event, canvas.current);
+    if (!coordinates) return;
+    pendingPointer.current = coordinates;
     if (pointerFrame.current !== null) return;
     pointerFrame.current = requestAnimationFrame(() => {
       pointerFrame.current = null;
@@ -139,7 +142,9 @@ export function RemoteViewer({ controlEnabled, fullscreen, t, onInput, onFrameRa
     if (event.button < 0 || event.button > 4) return;
     if (event.button > 2) event.preventDefault();
     const buttonName = event.button === 4 ? "forward" : event.button === 3 ? "back" : event.button === 2 ? "right" : event.button === 1 ? "middle" : "left";
-    lastPointer.current = point(event, canvas.current);
+    const coordinates = point(event, canvas.current);
+    if (down && !coordinates) return;
+    if (coordinates) lastPointer.current = coordinates;
     if (down) heldButtons.current.add(buttonName);
     else heldButtons.current.delete(buttonName);
     onInput({ type: "pointer_button", button: buttonName, down, ...lastPointer.current });
@@ -193,6 +198,7 @@ export function RemoteViewer({ controlEnabled, fullscreen, t, onInput, onFrameRa
           event.preventDefault();
           const delta = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 40 : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? 800 : 1;
           const coords = point(event, canvas.current);
+          if (!coords) return;
           if (event.deltaY) onInput({ type: "pointer_wheel", delta: Math.max(-1200, Math.min(1200, Math.round(-event.deltaY * delta))), horizontal: false, ...coords });
           if (event.deltaX) onInput({ type: "pointer_wheel", delta: Math.max(-1200, Math.min(1200, Math.round(-event.deltaX * delta))), horizontal: true, ...coords });
         }}

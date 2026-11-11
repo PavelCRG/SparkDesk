@@ -272,10 +272,10 @@ export function App() {
       } else if (isSessionWindow && sessionActive && fullscreen && event.key === "Escape") {
         event.preventDefault();
         void toggleFullscreen();
-      } else if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "c") {
+      } else if (!isSessionWindow && event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "c") {
         event.preventDefault();
         void copyId();
-      } else if (event.ctrlKey && event.key.toLowerCase() === "l") {
+      } else if (!isSessionWindow && event.ctrlKey && event.key.toLowerCase() === "l") {
         event.preventDefault();
         partnerInput.current?.focus();
       }

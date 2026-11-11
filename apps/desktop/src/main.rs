@@ -197,7 +197,7 @@ fn open_session_window(app: AppHandle, state: State<'_, AppState>) -> Result<(),
         )
         .title("SparkDesk")
         .inner_size(1280.0, 800.0)
-        .min_inner_size(900.0, 620.0)
+        .min_inner_size(520.0, 360.0)
         .decorations(false)
         .build()
         .map_err(|error| error.to_string())?;
