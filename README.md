@@ -4,7 +4,7 @@
 
 <p align="center"><strong>Private remote support, with permission.</strong></p>
 
-An account-free Windows remote-support prototype built with Rust, Tauri, React, and WebRTC. The device owner approves every session, grants mouse and keyboard control separately, and can revoke it while screen sharing continues.
+SparkDesk is account-free remote support for Windows. Connect directly to another device, view its screen with the owner's approval, and request mouse and keyboard control separately. The owner can turn control off at any time.
 
 > **Status: prototype.** The consent and remote-input flows are implemented. Two-device performance, 60 FPS, and cross-network connectivity still need real Windows testing.
 
