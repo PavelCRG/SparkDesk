@@ -4,9 +4,9 @@
 
 <p align="center"><strong>Private remote support, with permission.</strong></p>
 
-Account-free remote desktop for Windows, built in Rust. SparkDesk is designed around direct connections, clear session consent and a small signaling service that never relays screen video.
+An account-free Windows remote-support prototype built with Rust, Tauri, React, and WebRTC. The device owner approves every session, grants mouse and keyboard control separately, and can revoke it while screen sharing continues.
 
-> **Status: functional prototype.** Device discovery, per-session owner approval, direct screen streaming and optional remote input are implemented. The desktop uses a React interface inside a Rust/Tauri app.
+> **Status: prototype.** The consent and remote-input flows are implemented. Two-device performance, 60 FPS, and cross-network connectivity still need real Windows testing.
 
 ## What works today
 
@@ -97,17 +97,32 @@ The signaling service is for finding online devices and negotiating a session. T
 ## Project structure
 
 ```text
-apps/desktop/       Rust/Tauri desktop app and React UI
-  src/main.rs       Tauri commands and app state
-  src/identity.rs   Local Ed25519 device identity
-  src/signaling.rs  Authenticated requests, consent and WebRTC negotiation
-  src/peer.rs       Direct WebRTC data-channel setup
-  ui-react/src/ui/  Bilingual React desktop interface
-  icons/icon.ico    Windows application and installer icon
-  tauri.conf.json   Window, build and security configuration
-crates/protocol/    Versioned messages shared by Rust components
-cloud/signaling/    TypeScript Worker and per-device Durable Object
-docs/               Architecture and implementation plan
+apps/desktop/                         Rust/Tauri desktop application
+  capabilities/                       Window permissions
+  icons/                              Windows application and installer icons
+  src/
+    identity.rs                       Ed25519 device identity and peer proofs
+    input.rs                          Validated remote mouse and keyboard input
+    main.rs                           Tauri commands, app state and session window
+    peer.rs                           WebRTC data channels and peer authentication
+    screen.rs                         Windows capture, JPEG frames and reassembly
+    signaling.rs                      Consent flow and signaling connection
+  Cargo.toml, tauri.conf.json         Native app dependencies and configuration
+  ui-react/
+    public/                            App brand assets
+    src/
+      styles/                          UI styles by surface
+      ui/
+        components/                    Header, connection, session and viewer UI
+        App.tsx, copy.ts, types.ts     App state, translations and UI types
+crates/protocol/src/lib.rs              Versioned signaling messages
+cloud/signaling/src/index.ts            TypeScript Worker and per-device Durable Object
+docs/
+  branding/                            Logo concepts and visual direction
+  superpowers/
+    plans/                              Implementation roadmaps
+    specs/                              Feature and behavior specifications
+  architecture.md                      System architecture
 ```
 
 ## Security and licensing
