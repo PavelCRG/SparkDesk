@@ -167,8 +167,15 @@ impl SessionDiagnostics {
         self.mutate(|state| state.input_acks_sent += 1);
     }
 
-    pub fn input_ack_received(&self) {
-        self.mutate(|state| state.input_acks_received += 1);
+    pub fn input_ack_received(&self, applied: bool) {
+        self.mutate(|state| {
+            state.input_acks_received += 1;
+            if applied {
+                state.inputs_dispatched += 1;
+            } else {
+                state.inputs_rejected += 1;
+            }
+        });
     }
 
     pub fn set_connection_status(&self, status: PeerConnectionStatus) {
@@ -263,7 +270,7 @@ mod tests {
         diagnostics.input_dispatched(true);
         diagnostics.input_dispatched(false);
         diagnostics.input_ack_sent();
-        diagnostics.input_ack_received();
+        diagnostics.input_ack_received(true);
         diagnostics.send_duration(30);
         diagnostics.reassembly_duration(40);
         diagnostics.event_duration(50);
@@ -280,7 +287,7 @@ mod tests {
         assert_eq!(snapshot.incomplete_frames_dropped, 1);
         assert_eq!(snapshot.stale_chunks_dropped, 1);
         assert_eq!(snapshot.inputs_sent, 1);
-        assert_eq!(snapshot.inputs_dispatched, 1);
+        assert_eq!(snapshot.inputs_dispatched, 2);
         assert_eq!(snapshot.inputs_rejected, 1);
         assert_eq!(snapshot.input_acks_sent, 1);
         assert_eq!(snapshot.input_acks_received, 1);
@@ -311,5 +318,17 @@ mod tests {
             diagnostics.snapshot().peer_state,
             PeerConnectionStatus::Failed
         );
+    }
+
+    #[test]
+    fn viewer_ack_records_whether_the_host_applied_remote_input() {
+        let diagnostics = SessionDiagnostics::default();
+        diagnostics.input_ack_received(false);
+        diagnostics.input_ack_received(true);
+
+        let snapshot = diagnostics.snapshot();
+        assert_eq!(snapshot.input_acks_received, 2);
+        assert_eq!(snapshot.inputs_dispatched, 1);
+        assert_eq!(snapshot.inputs_rejected, 1);
     }
 }

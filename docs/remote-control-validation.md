@@ -29,7 +29,7 @@ The current execution environment did not expose the launched desktop windows fo
 ## Code verification
 
 - `cargo fmt --all -- --check`: passed.
-- `cargo test --workspace --offline`: passed (33 tests).
+- `cargo test --workspace --offline`: passed (35 tests).
 - `cargo build -p sparkdesk-desktop --offline`: passed.
 - `npm --prefix apps/desktop/ui-react run build`: passed, including the diagnostics disclosure and bilingual copy.
 - NSIS bundle: built `target/release/bundle/nsis/SparkDesk_0.1.0_x64-setup.exe` (4,816,346 bytes). It was not installed.

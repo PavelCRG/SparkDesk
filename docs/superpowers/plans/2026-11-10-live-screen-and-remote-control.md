@@ -60,9 +60,10 @@ Stages are sequential: do not tune frame rate before proving the basic session, 
 - Added bounded reporting of viewer-rendered frame counts once per second. Input RTT p50/p95 now includes all acknowledgements, including rejected OS dispatches, so a failed remote action still contributes its actual round-trip time.
 - Expanded the timing breakdown to include chunk-send time (including send-buffer waits), completed-frame reassembly latency and the synchronous Tauri event-emission call. The WebRTC crate's configured 512 KiB cap blocks each channel's `send` until capacity returns; the app separately skips capture at 256 KiB outstanding before a frame starts.
 - Added held-input release tests; if Windows rejects a key/button-up event, SparkDesk retains that held input for retry on the next permission poll.
+- Viewer diagnostics now record the host's `applied` result from every input acknowledgment, while still including rejected actions in RTT samples. The data-plane loop emits a final diagnostics snapshot after counting any incomplete frame at shutdown.
 - Added `docs/remote-control-validation.md` with source-configured values and an explicit pending row for real measurements. No hardware, FPS or latency results were fabricated.
 - Rechecked README claims: Windows primary-monitor scope, separate host consent, direct ICE with no TURN configuration, and protected Windows surfaces are documented.
-- `cargo fmt --all -- --check`, `cargo test --workspace --offline` (33 tests), `cargo build -p sparkdesk-desktop --offline`, and the React production build pass. NSIS packaging succeeded before these latest code changes; it must be rebuilt before install verification. MSI packaging fails with WiX `LGHT0217` because Windows Installer Service is unavailable here. The NSIS installer was not installed.
+- `cargo fmt --all -- --check`, `cargo test --workspace --offline` (35 tests), `cargo build -p sparkdesk-desktop --offline`, and the React production build pass. NSIS packaging succeeded before these latest code changes; it must be rebuilt before install verification. MSI packaging fails with WiX `LGHT0217` because Windows Installer Service is unavailable here. The NSIS installer was not installed.
 - The live two-window interaction gate could not be performed in this execution environment: launched backend processes connected to signaling, but no interactive windows were exposed. Therefore the release gates remain open for real screen/input interaction, measured performance, separate-network ICE, soak, and fresh-install evidence. Do not treat this record as a release sign-off.
 
 ## Remaining acceptance gates (2026-11-11)
@@ -182,7 +183,7 @@ Targets are a test gate, not a guarantee over arbitrary internet links. A 60 Hz 
 - [x] Verify the Rust boundary tests reject forged identity/session proof, malformed/oversized frames, unknown keys/buttons and input floods; frame-flood tests confirm malformed frames retain no state and incomplete-frame floods retain one bounded frame.
 - [ ] Verify decline sends no screen frames; control starts off; revoke stops input immediately while viewing may continue; disconnect stops capture and releases all held inputs.
 - [ ] Run a 10-minute two-PC session while moving the pointer and typing; record frame rate, RTT, memory and CPU, and confirm the UI remains responsive.
-- [x] Run `cargo fmt --all -- --check`, `cargo test --workspace --offline`, `cargo build -p sparkdesk-desktop --offline`, and `npm --prefix apps/desktop/ui-react run build` (code verification only; no two-client acceptance implied).
+- [x] Run `cargo fmt --all -- --check`, `cargo test --workspace --offline` (35 tests), `cargo build -p sparkdesk-desktop --offline`, and `npm --prefix apps/desktop/ui-react run build` (code verification only; no two-client acceptance implied).
 - [ ] Build the existing Windows installer target and verify fresh install, first launch and normal-size startup without reusing the development profile or credentials.
 - [x] README documents attended Windows sharing, owner consent, separate control permission, direct-only connectivity without TURN, and Windows protected-surface limitations.
 

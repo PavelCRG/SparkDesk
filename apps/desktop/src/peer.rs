@@ -21,7 +21,7 @@ use webrtc::peer_connection::{
 };
 
 use crate::{
-    diagnostics::{PeerConnectionStatus, SessionDiagnostics},
+    diagnostics::{DiagnosticsSnapshot, PeerConnectionStatus, SessionDiagnostics},
     identity::{DeviceIdentity, verify_peer_proof},
     input::{HeldInput, InputRateLimit, MonitorGeometry, RemoteInput, validate_input},
     screen::{
@@ -667,7 +667,7 @@ async fn run_data_events(
                                 }
                             }
                             PeerControlMessage::Ack { sequence, applied } if !host => {
-                                diagnostics.input_ack_received();
+                                diagnostics.input_ack_received(applied);
                                 let _ = app.emit("input-ack", InputAckEvent { sequence, applied });
                             }
                             _ => {}
@@ -687,11 +687,20 @@ async fn run_data_events(
             }
         }
     }
+    #[cfg(target_os = "windows")]
+    held.release_all();
+    let snapshot = finish_session_diagnostics(&mut frames, &diagnostics);
+    let _ = app.emit("session-diagnostics", snapshot);
+}
+
+fn finish_session_diagnostics(
+    frames: &mut FrameAssembler,
+    diagnostics: &SessionDiagnostics,
+) -> DiagnosticsSnapshot {
     if frames.discard_incomplete_frame() {
         diagnostics.dropped_incomplete_frame();
     }
-    #[cfg(target_os = "windows")]
-    held.release_all();
+    diagnostics.snapshot()
 }
 
 impl Drop for PeerSession {
@@ -778,7 +787,11 @@ async fn wait_for_gathering(gathered: Arc<Notify>) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{PeerControlMessage, screen_data_channel_init};
+    use super::{PeerControlMessage, finish_session_diagnostics, screen_data_channel_init};
+    use crate::{
+        diagnostics::SessionDiagnostics,
+        screen::{FrameAssembler, ScreenFrame, chunk_frame_iter},
+    };
 
     #[test]
     fn screen_channel_drops_lost_chunks_instead_of_retransmitting_stale_frames() {
@@ -802,5 +815,21 @@ mod tests {
                 applied: true
             }
         ));
+    }
+
+    #[test]
+    fn session_shutdown_snapshot_includes_discarded_incomplete_frame() {
+        let frame = ScreenFrame {
+            id: 1,
+            width: 1280,
+            height: 720,
+            jpeg: vec![7; 35_000],
+        };
+        let first_chunk = chunk_frame_iter(&frame).unwrap().next().unwrap();
+        let mut frames = FrameAssembler::default();
+        assert_eq!(frames.push(&first_chunk).unwrap(), None);
+
+        let snapshot = finish_session_diagnostics(&mut frames, &SessionDiagnostics::default());
+        assert_eq!(snapshot.incomplete_frames_dropped, 1);
     }
 }
