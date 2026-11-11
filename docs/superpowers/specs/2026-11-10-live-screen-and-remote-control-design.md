@@ -6,7 +6,7 @@ Turn the current approved direct WebRTC connection into a usable Windows remote-
 
 ## Current state
 
-The desktop uses Rust/Tauri for identity, signaling and WebRTC, with a React UI. The connection creates `screen` and `control` data channels but does not attach capture, image or input handlers. The identity is currently shared by all processes under the same Windows profile, so two local app instances collide.
+The desktop uses Rust/Tauri for identity, signaling, WebRTC, Windows capture and input dispatch, with a React UI. An accepted connection opens a dedicated session window while the home window remains available. Screen frames use bounded JPEG chunks over an unordered, zero-retransmit data channel; control uses a separate reliable channel. The viewer reports image frame rate and input-dispatch RTT. A two-computer performance and connectivity run has not yet been recorded.
 
 ## Goals
 
@@ -16,6 +16,8 @@ The desktop uses Rust/Tauri for identity, signaling and WebRTC, with a React UI.
 - Validate message type, coordinates, key/button codes, message size and event rate on the receiving Rust boundary.
 - Bind each WebRTC session to the expected device IDs with a signed challenge over the data channel before sending screen frames or accepting control input.
 - Stop capture and release any held synthetic inputs on disconnect or revocation.
+- Keep the session window independent from the home window; closing the session window ends the active session.
+- Report canvas draw rate and p95 input acknowledgement RTT from the viewer's monotonic clock.
 - Allow a second local test instance to use a separate identity/profile without changing the normal persistent identity.
 - Preserve React/Tauri UI and existing English/Russian support.
 
@@ -33,11 +35,12 @@ The desktop uses Rust/Tauri for identity, signaling and WebRTC, with a React UI.
 
 - An ID locates a device but never grants access. Every incoming session still requires local acceptance.
 - Screen viewing begins only after acceptance. Keyboard and mouse control requires a second explicit local action and starts disabled.
-- The local host can revoke control immediately without ending viewing; ending/revoking closes the session and releases held keys/buttons.
+- The local host can revoke control immediately without ending viewing; held keys/buttons are released on the host. Ending the session closes the media path and releases any remaining held inputs.
 - Data-channel input is untrusted even after consent. Rust checks an allowlist of input event variants and bounds/rates before calling Windows APIs. Unsupported keys, out-of-range coordinates and oversized messages are ignored.
 - Windows synthetic input uses documented `SendInput` behavior and cannot bypass User Interface Privilege Isolation (UIPI), secure desktops or elevation boundaries.
-- Capture and image delivery run outside the UI thread; the pipeline retains only the newest pending frame to limit latency and memory growth.
-- Frames are JPEG, capped at 1 MiB and 1920×1080, split into data-channel chunks no larger than 16 KiB (the installed WebRTC API's receive limit); if the configured send buffer is full, drop that frame. Control uses normalized primary-monitor coordinates, an allowlist of keys/buttons and bounded held-input state.
+- Capture and image delivery run outside the UI thread. Capture is scheduled at 60 Hz; missed ticks are skipped, and a backlog threshold pauses the next capture. This is a requested capture rate, not proof of 60 displayed FPS.
+- Frames are JPEG, capped at 1 MiB and 1280×720, split into 16,000-byte payload chunks. The screen data channel is unordered and does not retransmit lost chunks; the assembler rejects late chunks from older frames. Control uses normalized primary-monitor coordinates, an allowlist of keys/buttons and bounded held-input state.
+- Accepted input carries a per-session sequence number. The host acknowledges whether Windows dispatched it, and the viewer measures round-trip time with its own monotonic clock.
 - A peer's identity is verified from its public key (the device ID is derived from that key) and a signature over a fresh nonce, request ID and both device IDs before either side grants session capabilities.
 - The local test profile is a validated profile name under SparkDesk's configuration directory, never an arbitrary key-file path; the default profile remains untouched.
 
@@ -52,7 +55,7 @@ Both processes use the same configured signaling URL. The second local process g
 - After host acceptance, the helper displays updated screen frames; declining transmits no frames.
 - Control events have no effect before the host enables control, and stop immediately after revocation or disconnect.
 - Invalid or excessive control messages cannot trigger OS input.
-- UI remains responsive and gives the host a visible active-session/control indicator.
+- UI remains responsive, keeps home and session in separate windows, provides a host control/revoke toggle, and reports viewer frame rate and input p95.
 - Rust tests cover protocol validation and control gating; React builds; a real two-instance Windows test verifies capture, display, mouse, keyboard, revoke and disconnect.
 
 ## Scope call

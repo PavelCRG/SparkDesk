@@ -12,7 +12,9 @@ use bytes::BytesMut;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 use tokio::sync::{Mutex, Notify, mpsc};
-use webrtc::data_channel::{DataChannel, DataChannelEvent, RTCDataChannelState};
+use webrtc::data_channel::{
+    DataChannel, DataChannelEvent, RTCDataChannelInit, RTCDataChannelState,
+};
 use webrtc::peer_connection::{
     PeerConnection, PeerConnectionBuilder, PeerConnectionEventHandler, RTCConfigurationBuilder,
     RTCIceGatheringState, RTCIceServer, RTCPeerConnectionState, RTCSessionDescription,
@@ -21,7 +23,10 @@ use webrtc::peer_connection::{
 use crate::{
     identity::{DeviceIdentity, verify_peer_proof},
     input::{HeldInput, InputRateLimit, MonitorGeometry, RemoteInput, validate_input},
-    screen::{FrameAssembler, chunk_frame, validate_jpeg},
+    screen::{
+        FrameAssembler, SCREEN_FRAME_INTERVAL, SCREEN_SEND_BUFFER_BYTES, can_capture_screen_frame,
+        chunk_frame_iter, validate_jpeg,
+    },
 };
 
 const DATA_CHANNEL_TIMEOUT: Duration = Duration::from_secs(20);
@@ -91,7 +96,7 @@ impl PeerSession {
             .map_err(|error| error.to_string())?;
         let screen = session
             .connection
-            .create_data_channel("screen", None)
+            .create_data_channel("screen", Some(screen_data_channel_init()))
             .await
             .map_err(|error| error.to_string())?;
         register_channel(control, session.channels.clone(), session.event_sender()).await;
@@ -350,6 +355,7 @@ impl PeerSession {
             .ok_or("peer data channels already started")?;
         tokio::spawn(run_data_events(
             events,
+            control,
             host,
             app,
             control_allowed,
@@ -362,7 +368,6 @@ impl PeerSession {
             });
         }
         self.send_permission(false).await?;
-        let _ = control;
         Ok(())
     }
 
@@ -371,9 +376,9 @@ impl PeerSession {
             .await
     }
 
-    pub async fn send_input(&self, input: RemoteInput) -> Result<(), String> {
+    pub async fn send_input(&self, sequence: u32, input: RemoteInput) -> Result<(), String> {
         validate_input(&input).map_err(str::to_owned)?;
-        self.send_control(&PeerControlMessage::Input { input })
+        self.send_control(&PeerControlMessage::Input { sequence, input })
             .await
     }
 
@@ -430,7 +435,7 @@ impl PeerSession {
                 // The UI must wait for the signed peer challenge before declaring a session ready.
                 incoming_channels,
             }))
-            .with_data_channel_send_buffer_limit(512 * 1024)
+            .with_data_channel_send_buffer_limit(SCREEN_SEND_BUFFER_BYTES)
             .with_udp_addrs(vec!["0.0.0.0:0"])
             .build()
             .await
@@ -472,7 +477,8 @@ enum HandshakeMessage {
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 enum PeerControlMessage {
     Permission { enabled: bool },
-    Input { input: RemoteInput },
+    Input { sequence: u32, input: RemoteInput },
+    Ack { sequence: u32, applied: bool },
 }
 
 #[derive(Clone, Serialize)]
@@ -484,14 +490,35 @@ struct ScreenFrameEvent {
     jpeg_base64: String,
 }
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InputAckEvent {
+    sequence: u32,
+    applied: bool,
+}
+
+fn screen_data_channel_init() -> RTCDataChannelInit {
+    RTCDataChannelInit {
+        ordered: false,
+        max_retransmits: Some(0),
+        ..Default::default()
+    }
+}
+
 async fn send_screen_frames(channel: Arc<dyn DataChannel>, running: Arc<AtomicBool>) {
-    let mut interval = tokio::time::interval(Duration::from_millis(120));
+    let mut interval = tokio::time::interval(SCREEN_FRAME_INTERVAL);
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut frame_id = 0u32;
     while running.load(Ordering::Acquire) {
         interval.tick().await;
         if !running.load(Ordering::Acquire) {
             break;
+        }
+        let Ok(outstanding) = channel.outstanding_bytes().await else {
+            break;
+        };
+        if !can_capture_screen_frame(outstanding) {
+            continue;
         }
         let Ok(mut frame) = tokio::task::spawn_blocking(crate::screen::capture_primary)
             .await
@@ -501,13 +528,13 @@ async fn send_screen_frames(channel: Arc<dyn DataChannel>, running: Arc<AtomicBo
         };
         frame.id = frame_id;
         frame_id = frame_id.wrapping_add(1);
-        let Ok(chunks) = chunk_frame(&frame) else {
+        let Ok(chunks) = chunk_frame_iter(&frame) else {
             continue;
         };
         for chunk in chunks {
             if !running.load(Ordering::Acquire)
                 || channel
-                    .try_send(BytesMut::from(chunk.as_slice()))
+                    .send(BytesMut::from(chunk.as_slice()))
                     .await
                     .is_err()
             {
@@ -519,6 +546,7 @@ async fn send_screen_frames(channel: Arc<dyn DataChannel>, running: Arc<AtomicBo
 
 async fn run_data_events(
     mut events: mpsc::Receiver<PeerEvent>,
+    control: Arc<dyn DataChannel>,
     host: bool,
     app: AppHandle,
     control_allowed: Arc<AtomicBool>,
@@ -550,18 +578,31 @@ async fn run_data_events(
                         }
                     }
                 } else if event.label == "control" && message.is_string && message.data.len() <= crate::input::MAX_INPUT_BYTES {
-                    if let Ok(control) = serde_json::from_slice::<PeerControlMessage>(&message.data) {
-                        match control {
+                    if let Ok(control_message) = serde_json::from_slice::<PeerControlMessage>(&message.data) {
+                        match control_message {
                             PeerControlMessage::Permission { enabled } if !host => {
                                 crate::signaling::set_control_status(&app, enabled);
                             }
-                            PeerControlMessage::Input { input } if host && control_allowed.load(Ordering::Acquire) => {
-                                if validate_input(&input).is_ok() && input_limit.allow(Instant::now()) {
-                                    #[cfg(target_os = "windows")]
-                                    if let Some(monitor) = monitor { let _ = held.apply(input, monitor); }
-                                    #[cfg(not(target_os = "windows"))]
-                                    let _ = input;
+                            PeerControlMessage::Input { sequence, input } if host => {
+                                let mut applied = control_allowed.load(Ordering::Acquire)
+                                    && validate_input(&input).is_ok()
+                                    && input_limit.allow(Instant::now());
+                                #[cfg(target_os = "windows")]
+                                {
+                                    applied = applied
+                                        && monitor.is_some_and(|monitor| held.apply(input, monitor).is_ok());
                                 }
+                                #[cfg(not(target_os = "windows"))]
+                                {
+                                    let _ = input;
+                                    applied = false;
+                                }
+                                if let Ok(text) = serde_json::to_string(&PeerControlMessage::Ack { sequence, applied }) {
+                                    let _ = control.send_text(&text).await;
+                                }
+                            }
+                            PeerControlMessage::Ack { sequence, applied } if !host => {
+                                let _ = app.emit("input-ack", InputAckEvent { sequence, applied });
                             }
                             _ => {}
                         }
@@ -660,4 +701,33 @@ async fn wait_for_gathering(gathered: Arc<Notify>) -> Result<(), String> {
         .await
         .map_err(|_| "ICE gathering timed out; check firewall and STUN access".to_owned())
         .map(|_| ())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PeerControlMessage, screen_data_channel_init};
+
+    #[test]
+    fn screen_channel_drops_lost_chunks_instead_of_retransmitting_stale_frames() {
+        let init = screen_data_channel_init();
+        assert!(!init.ordered);
+        assert_eq!(init.max_retransmits, Some(0));
+        assert_eq!(init.max_packet_life_time, None);
+    }
+
+    #[test]
+    fn input_ack_reports_sequence_and_dispatch_result() {
+        let message = PeerControlMessage::Ack {
+            sequence: 17,
+            applied: true,
+        };
+        let bytes = serde_json::to_vec(&message).unwrap();
+        assert!(matches!(
+            serde_json::from_slice::<PeerControlMessage>(&bytes).unwrap(),
+            PeerControlMessage::Ack {
+                sequence: 17,
+                applied: true
+            }
+        ));
+    }
 }

@@ -8,6 +8,13 @@ const MAX_WIDTH: u32 = 1280;
 const MAX_HEIGHT: u32 = 720;
 const CHUNK_BYTES: usize = 16_000;
 const HEADER_BYTES: usize = 19;
+const SCREEN_CAPTURE_BACKLOG_BYTES: usize = 256 * 1024;
+pub const SCREEN_SEND_BUFFER_BYTES: usize = 512 * 1024;
+pub const SCREEN_FRAME_INTERVAL: std::time::Duration = std::time::Duration::from_micros(16_667);
+
+pub fn can_capture_screen_frame(outstanding_bytes: usize) -> bool {
+    outstanding_bytes < SCREEN_CAPTURE_BACKLOG_BYTES
+}
 
 #[derive(Debug, PartialEq)]
 pub struct ScreenFrame {
@@ -82,7 +89,7 @@ pub fn capture_primary() -> Result<ScreenFrame, String> {
     }
 }
 
-pub fn chunk_frame(frame: &ScreenFrame) -> Result<Vec<Vec<u8>>, &'static str> {
+fn frame_wire_size(frame: &ScreenFrame) -> Result<usize, &'static str> {
     if frame.width == 0
         || frame.height == 0
         || u32::from(frame.width) > MAX_WIDTH
@@ -93,12 +100,21 @@ pub fn chunk_frame(frame: &ScreenFrame) -> Result<Vec<Vec<u8>>, &'static str> {
         return Err("invalid screen frame");
     }
     let count = frame.jpeg.len().div_ceil(CHUNK_BYTES);
-    let count = u16::try_from(count).map_err(|_| "too many screen chunks")?;
+    u16::try_from(count).map_err(|_| "too many screen chunks")?;
+    Ok(frame.jpeg.len() + count * HEADER_BYTES)
+}
+
+pub fn chunk_frame_iter(
+    frame: &ScreenFrame,
+) -> Result<impl Iterator<Item = Vec<u8>> + '_, &'static str> {
+    frame_wire_size(frame)?;
+    let count = u16::try_from(frame.jpeg.len().div_ceil(CHUNK_BYTES))
+        .map_err(|_| "too many screen chunks")?;
     Ok(frame
         .jpeg
         .chunks(CHUNK_BYTES)
         .enumerate()
-        .map(|(index, bytes)| {
+        .map(move |(index, bytes)| {
             let mut chunk = Vec::with_capacity(HEADER_BYTES + bytes.len());
             chunk.extend_from_slice(b"SD");
             chunk.push(1);
@@ -110,13 +126,22 @@ pub fn chunk_frame(frame: &ScreenFrame) -> Result<Vec<Vec<u8>>, &'static str> {
             chunk.extend_from_slice(&(frame.jpeg.len() as u32).to_be_bytes());
             chunk.extend_from_slice(bytes);
             chunk
-        })
-        .collect())
+        }))
+}
+
+#[cfg(test)]
+fn chunk_frame(frame: &ScreenFrame) -> Result<Vec<Vec<u8>>, &'static str> {
+    Ok(chunk_frame_iter(frame)?.collect())
 }
 
 #[derive(Default)]
 pub struct FrameAssembler {
     current: Option<PartialFrame>,
+    last_completed_id: Option<u32>,
+}
+
+fn is_newer_frame_id(candidate: u32, current: u32) -> bool {
+    candidate != current && candidate.wrapping_sub(current) < (1 << 31)
 }
 
 struct PartialFrame {
@@ -164,6 +189,18 @@ impl FrameAssembler {
         if payload.len() != expected_len {
             return Err("invalid screen chunk size");
         }
+        if self
+            .last_completed_id
+            .is_some_and(|last_id| !is_newer_frame_id(id, last_id))
+        {
+            return Err("stale screen frame");
+        }
+        if let Some(current) = &self.current
+            && current.id != id
+            && !is_newer_frame_id(id, current.id)
+        {
+            return Err("stale screen frame");
+        }
         if self.current.as_ref().is_none_or(|frame| frame.id != id) {
             self.current = Some(PartialFrame {
                 id,
@@ -190,6 +227,7 @@ impl FrameAssembler {
         for chunk in frame.chunks.iter().flatten() {
             jpeg.extend_from_slice(chunk);
         }
+        self.last_completed_id = Some(id);
         self.current.take().ok_or("screen frame state missing")?;
         Ok(Some(ScreenFrame {
             id,
@@ -202,7 +240,10 @@ impl FrameAssembler {
 
 #[cfg(test)]
 mod tests {
-    use super::{FrameAssembler, ScreenFrame, chunk_frame, validate_jpeg};
+    use super::{
+        FrameAssembler, SCREEN_FRAME_INTERVAL, ScreenFrame, can_capture_screen_frame, chunk_frame,
+        chunk_frame_iter, frame_wire_size, validate_jpeg,
+    };
     use image::{ColorType, codecs::jpeg::JpegEncoder};
     use std::io::Cursor;
 
@@ -253,5 +294,86 @@ mod tests {
         };
         assert!(validate_jpeg(&frame));
         assert!(!validate_jpeg(&ScreenFrame { width: 3, ..frame }));
+    }
+
+    #[test]
+    fn capture_period_targets_sixty_frames_per_second() {
+        assert_eq!(SCREEN_FRAME_INTERVAL.as_micros(), 16_667);
+    }
+
+    #[test]
+    fn screen_capture_pauses_when_the_send_queue_is_backlogged() {
+        assert!(can_capture_screen_frame(0));
+        assert!(can_capture_screen_frame(128 * 1024));
+        assert!(!can_capture_screen_frame(256 * 1024));
+    }
+
+    #[test]
+    fn lazy_screen_chunks_match_the_existing_wire_format() {
+        let frame = ScreenFrame {
+            id: 9,
+            width: 1280,
+            height: 720,
+            jpeg: vec![7; 35_000],
+        };
+
+        let lazy = chunk_frame_iter(&frame).unwrap().collect::<Vec<_>>();
+        assert_eq!(lazy, chunk_frame(&frame).unwrap());
+        assert_eq!(
+            frame_wire_size(&frame).unwrap(),
+            lazy.iter().map(Vec::len).sum::<usize>()
+        );
+    }
+
+    #[test]
+    fn delayed_chunks_from_older_frames_do_not_replace_newer_frames() {
+        let newer = ScreenFrame {
+            id: 2,
+            width: 1280,
+            height: 720,
+            jpeg: vec![2; 35_000],
+        };
+        let older = ScreenFrame {
+            id: 1,
+            width: 1280,
+            height: 720,
+            jpeg: vec![1; 35_000],
+        };
+        let newer_chunks = chunk_frame(&newer).unwrap();
+        let older_chunks = chunk_frame(&older).unwrap();
+        let mut assembler = FrameAssembler::default();
+
+        let mut result = None;
+        for chunk in &newer_chunks {
+            result = assembler.push(chunk).unwrap().or(result);
+        }
+        assert_eq!(result, Some(newer));
+        assert!(assembler.push(&older_chunks[0]).is_err());
+    }
+
+    #[test]
+    fn frame_id_order_handles_wraparound() {
+        let last = ScreenFrame {
+            id: u32::MAX,
+            width: 1280,
+            height: 720,
+            jpeg: vec![1; 35_000],
+        };
+        let first = ScreenFrame {
+            id: 0,
+            width: 1280,
+            height: 720,
+            jpeg: vec![2; 35_000],
+        };
+        let mut assembler = FrameAssembler::default();
+
+        for chunk in chunk_frame(&last).unwrap() {
+            assembler.push(&chunk).unwrap();
+        }
+        let mut result = None;
+        for chunk in chunk_frame(&first).unwrap() {
+            result = assembler.push(&chunk).unwrap().or(result);
+        }
+        assert_eq!(result, Some(first));
     }
 }

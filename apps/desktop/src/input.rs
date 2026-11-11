@@ -188,6 +188,14 @@ pub struct MonitorGeometry {
 }
 
 impl MonitorGeometry {
+    fn pixel_at(self, x: u16, y: u16) -> (i32, i32) {
+        let px = self.x
+            + (u64::from(x) * u64::from(self.width.saturating_sub(1)) / u64::from(u16::MAX)) as i32;
+        let py = self.y
+            + (u64::from(y) * u64::from(self.height.saturating_sub(1)) / u64::from(u16::MAX))
+                as i32;
+        (px, py)
+    }
     pub fn primary() -> Result<Self, String> {
         let monitor = crate::screen::primary_monitor()?;
         Ok(Self {
@@ -308,10 +316,7 @@ impl HeldInput {
 
 #[cfg(target_os = "windows")]
 fn move_pointer(monitor: MonitorGeometry, x: u16, y: u16) -> Result<(), &'static str> {
-    let px = monitor.x
-        + (u64::from(x) * u64::from(monitor.width.saturating_sub(1)) / u64::from(u16::MAX)) as i32;
-    let py = monitor.y
-        + (u64::from(y) * u64::from(monitor.height.saturating_sub(1)) / u64::from(u16::MAX)) as i32;
+    let (px, py) = monitor.pixel_at(x, y);
     if unsafe { SetCursorPos(px, py) } == 0 {
         Err("Windows rejected remote pointer input")
     } else {
@@ -353,7 +358,7 @@ fn send(input: INPUT) -> Result<(), &'static str> {
 
 #[cfg(test)]
 mod tests {
-    use super::{InputRateLimit, RemoteInput, parse_input, validate_input};
+    use super::{InputRateLimit, MonitorGeometry, RemoteInput, parse_input, validate_input};
     use std::time::{Duration, Instant};
 
     #[test]
@@ -411,5 +416,20 @@ mod tests {
         assert!(parse_input(br#"{"type":"key","code":"F24","down":true}"#).is_ok());
         assert!(parse_input(br#"{"type":"key","code":"Numpad7","down":true}"#).is_ok());
         assert!(parse_input(br#"{"type":"key","code":"F25","down":true}"#).is_err());
+    }
+
+    #[test]
+    fn pointer_coordinates_map_to_capture_monitor_edges() {
+        let monitor = MonitorGeometry {
+            x: -1920,
+            y: 120,
+            width: 1920,
+            height: 1080,
+        };
+
+        assert_eq!(monitor.pixel_at(0, 0), (-1920, 120));
+        assert_eq!(monitor.pixel_at(u16::MAX, 0), (-1, 120));
+        assert_eq!(monitor.pixel_at(0, u16::MAX), (-1920, 1199));
+        assert_eq!(monitor.pixel_at(u16::MAX, u16::MAX), (-1, 1199));
     }
 }

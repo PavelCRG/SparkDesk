@@ -9,6 +9,7 @@ export type RemoteInput =
   | { type: "key"; code: string; down: boolean };
 
 export type ScreenFrame = { id: number; width: number; height: number; jpegBase64: string };
+export type InputAck = { sequence: number; applied: boolean };
 
 export type AppStatus = {
   deviceId: string;

@@ -15,14 +15,16 @@ Account-free remote desktop for Windows, built in Rust. SparkDesk is designed ar
 - Copy the device ID with the icon button or `Ctrl+Shift+C`; `Ctrl+L` focuses the partner ID field and `Enter` submits it.
 - Send a connection request to an online device and require its owner to accept or decline.
 - Negotiate a direct WebRTC connection after approval and provide a visible end-session action.
-- Stream the primary display directly to the connected device; the host must separately enable mouse and keyboard control.
+- Open each connected session in its own resizable window while keeping the home window available. Closing the session window ends the session.
+- Stream the primary display directly to the connected device. The host separately enables mouse and keyboard control and can revoke it without stopping screen viewing.
+- Show the viewer's canvas draw rate and rolling p95 input-dispatch round trip in the session toolbar.
 - Run a second local instance with a separate profile, for example `--profile=helper`.
 - Switch the home screen between Russian and English without restarting.
 - View the current signaling connection status.
 - Optional WebSocket connection to a signaling endpoint with challenge authentication and reconnect backoff.
 - Cloudflare Worker and per-device Durable Objects for presence and setup messages. A temporary public Worker is available for connection testing.
 
-TURN relay, installer and real two-PC verification remain future work. Without TURN, some NAT/firewall combinations will not connect.
+The capture loop is scheduled at 60 Hz, but actual 60 FPS and low-latency targets are not yet verified on two Windows PCs; JPEG encoding, rendering and network conditions can reduce the observed rate. TURN relay, installer and real two-PC verification remain future work. Without TURN, some NAT/firewall combinations will not connect.
 
 ## Run the desktop
 

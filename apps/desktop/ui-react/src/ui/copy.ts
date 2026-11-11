@@ -50,9 +50,13 @@ const translations = {
     screenWaiting: "Waiting for the first screen frame…",
     screenHelp: "Click the screen to focus it, then use the mouse and keyboard.",
     remoteControl: "Allow remote control",
+    blockRemoteControl: "Block remote control",
     controlOn: "Remote control is on",
     controlOff: "Remote control is off",
     controlRevoked: "Remote control was revoked",
+    sessionPerformance: "Session performance",
+    framesPerSecond: "drawn FPS",
+    inputLatencyP95: "Input latency, 95th percentile",
   },
   ru: {
     tagline: "УДАЛЁННАЯ ПОМОЩЬ — С ВАШЕГО РАЗРЕШЕНИЯ",
@@ -105,9 +109,13 @@ const translations = {
     screenWaiting: "Ожидаем первый кадр экрана…",
     screenHelp: "Нажмите на экран, чтобы передать ему управление мышью и клавиатурой.",
     remoteControl: "Разрешить удалённое управление",
+    blockRemoteControl: "Запретить удалённое управление",
     controlOn: "Удалённое управление включено",
     controlOff: "Удалённое управление выключено",
     controlRevoked: "Удалённое управление отозвано",
+    sessionPerformance: "Показатели сеанса",
+    framesPerSecond: "отрис. кадр/с",
+    inputLatencyP95: "Задержка ввода, 95-й процентиль",
   },
 } as const;
 

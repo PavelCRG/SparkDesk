@@ -40,9 +40,18 @@ Stages are sequential: do not tune frame rate before proving the basic session, 
 ## Baseline
 
 - The code already has separate `screen` and `control` data channels, JPEG capture, Rust input validation, a React viewer, separate local profiles and a host-side control permission.
-- Capture currently tops out at 1280×720, encodes JPEG quality 45 and requests a frame every 120 ms (about 8 frames/second). Frames are base64-encoded for UI events.
+- Before the 60 FPS work, capture topped out at 1280×720, encoded JPEG quality 45 and requested a frame every 120 ms (about 8 frames/second). Frames are base64-encoded for UI events.
 - Rust tests and the UI build have passed, but the actual screen, mouse and keyboard path has not yet been exercised between two Windows computers.
 - Treat the first task as a live reproduction and measurement gate. Do not claim the desktop is ready for remote support until the host and viewer have completed the acceptance run below.
+
+## Local implementation status (2026-11-11)
+
+- The sender now requests frames on a 60 Hz schedule, skips missed ticks, pauses new capture when the screen-channel backlog reaches 256 KiB, and creates chunks lazily. The screen channel is unordered with zero retransmits so stale image data is not retransmitted ahead of new frames; control remains on its separate reliable channel.
+- The frame assembler rejects late chunks from older completed frames. The viewer draws only the latest decoded frame to a canvas on animation frames, without a React update per image, and reports its canvas draw rate plus a rolling p95 input RTT. Input actions carry a bounded per-session sequence number and the host acknowledges only after OS dispatch; a failed dispatch is reported as not applied.
+- A connected session opens in its own native window while the home window remains available. Closing the session window ends the session. Host permission remains off after accept and can be revoked at any time; the existing revoke path releases held input.
+- Rust tests cover the session-window eligibility gate, acknowledgement message, stale frames and pointer mapping to all four monitor edges with a negative origin.
+- These are code-level changes, not performance evidence. No desktop app was launched and no two-machine session, 60-second FPS run, input RTT measurement, TURN path test, ten-minute soak or installer verification was performed. Keep those gates open until the runs have recorded results.
+- The 60 FPS and 50 ms p95 targets remain goals to measure, not claims about current performance. JPEG encoding, CPU, network bandwidth, base64 conversion and React rendering may keep the current path below target; if so, use measured data to decide whether a video transport is needed.
 
 ## Global Constraints
 
@@ -69,12 +78,12 @@ Stages are sequential: do not tune frame rate before proving the basic session, 
 Record hardware, Windows version, capture resolution, network path and results with every run. Initial measurable targets for a wired same-LAN run are:
 
 - First usable screen frame within 2 seconds after accepted connection.
-- At least 20 displayed frames per second over a 60-second 1280×720 run. Record receive/render intervals and skipped frame IDs to detect stale queued work without comparing unsynchronized machine clocks.
-- Remote input acknowledgement round-trip p95 at or below 100 ms on the same LAN. Also report p50 and p95; do not infer one-way latency by assuming clocks on two machines match.
+- Sustain 60 displayed frames per second for 60 seconds at 1280×720 on the reference wired LAN. Record effective resolution, receive/render intervals and skipped frame IDs; text on the host desktop must remain legible.
+- Remote input acknowledgement round-trip p95 at or below 50 ms on the same LAN. Also report p50 and p95; do not infer one-way latency by assuming clocks on two machines match.
 - No input accepted before consent or after revoke, and no held key/button remains after disconnect.
 - A separate-network run must complete with the configured ICE path. If it needs TURN, document the provider/configuration and test relay traffic before calling internet connectivity supported.
 
-Targets are a test gate, not a guarantee over arbitrary internet links. Record deviations and their measured cause rather than hiding them by lowering the target.
+Targets are a test gate, not a guarantee over arbitrary internet links. A 60 Hz capture timer alone does not count as 60 FPS; the measured viewer render rate must meet the target. Record deviations and their measured cause rather than hiding them by lowering the target.
 
 ## Implementation Tasks
 
@@ -85,10 +94,10 @@ Targets are a test gate, not a guarantee over arbitrary internet links. Record d
 - [ ] Start two windowed desktop instances on one Windows machine using the documented default and `--profile=helper` identities; verify both distinct IDs are online.
 - [ ] Run the owner-accept / viewer-connect flow. Record whether frames arrive and whether pointer, buttons, wheel, ordinary keys and modifiers reach the host.
 - [ ] Add bounded diagnostic counters for capture/encode duration, bytes per frame, frame IDs sent/received/rendered, dropped/incomplete frames, input send/dispatch/ack and connection state. Keep diagnostics local; never record frame contents, typed text or device secrets.
-- [ ] Add an input acknowledgement carrying a per-session sequence number after host validation and OS dispatch. Measure round-trip with the viewer's monotonic clock; do not compare unsynchronized host/viewer clocks.
+- [x] Add an input acknowledgement carrying a per-session sequence number after host validation and OS dispatch. The viewer measures round-trip with its monotonic clock; it does not compare unsynchronized host/viewer clocks.
 - [ ] Write the baseline to a new `docs/remote-control-validation.md` with the machine/network details and measured p50/p95 values.
-- [ ] Update the spec's `Current state`, transport limits and non-goals so it describes the shipped code instead of the pre-implementation state.
-- [ ] Run `cargo test --workspace --offline` and `npm --prefix apps/desktop/ui-react run build`.
+- [x] Update the spec's `Current state` and transport limits to describe the implemented code and remaining non-goals.
+- [x] Run `cargo test --workspace --offline` and `npm --prefix apps/desktop/ui-react run build`.
 
 **Gate:** If the real local two-instance session cannot show a moving screen and perform a basic click and text entry, stop performance tuning and fix that reproduced functional failure first.
 
@@ -97,7 +106,7 @@ Targets are a test gate, not a guarantee over arbitrary internet links. Record d
 **Files:** `apps/desktop/src/input.rs`, `apps/desktop/src/peer.rs`, `apps/desktop/src/main.rs`, `apps/desktop/ui-react/src/ui/components/RemoteViewer.tsx`.
 
 - [ ] Add a failing Rust test named `revoking_control_releases_all_held_keys_and_buttons` covering a held modifier and mouse button.
-- [ ] Add a failing test named `pointer_coordinates_map_to_capture_monitor_edges` covering all four edges and a non-zero/negative monitor origin.
+- [x] Add a Rust test named `pointer_coordinates_map_to_capture_monitor_edges` covering all four edges and a non-zero/negative monitor origin.
 - [ ] Run each new test and confirm it fails for the missing behavior before implementation.
 - [ ] Verify `pointercancel`, viewer blur and control revoke in the real two-instance run.
 - [ ] Implement the smallest fixes in the existing input/viewer flow; preserve allowlists, payload bounds and the current per-second rate limit unless Task 1 measurements prove it rejects normal input.
@@ -113,7 +122,7 @@ Targets are a test gate, not a guarantee over arbitrary internet links. Record d
 - [ ] Add failing tests named `frame_send_policy_drops_stale_frames_when_channel_is_backlogged` and `frame_assembler_discards_superseded_incomplete_frame`; keep the queue policy small and independent of WebRTC so it can be tested without a live peer.
 - [ ] Run both tests and confirm they fail for stale-frame handling before changing the sender or assembler.
 - [ ] Measure capture, resize, JPEG encode, chunk send, receive/reassembly, UI event and render intervals separately at 1280×720. Confirm the displayed frame rate against Task 1's baseline.
-- [ ] Bound in-flight screen data using the WebRTC channel's buffered amount or an equivalent single-frame budget. Drop an obsolete frame instead of queueing it; keep the separate control channel responsive.
+- [x] Bound in-flight screen data using the WebRTC channel's buffered amount or an equivalent single-frame budget. Skip new capture when backlogged; keep control on its separate channel.
 - [ ] Select a capture interval, JPEG quality and downscale policy from the measurements. Keep the first pass on the existing JPEG transport and document chosen values; do not add a codec dependency before profiling.
 - [ ] Avoid repeated full-size base64/string and React work where the current Tauri event/render path shows a measurable cost. Keep frame updates local to the viewer.
 - [ ] Re-run sender/reassembly tests and the 60-second LAN benchmark; record displayed FPS, receive/render intervals, skipped IDs, input RTT and CPU before/after.
@@ -130,7 +139,7 @@ Targets are a test gate, not a guarantee over arbitrary internet links. Record d
 - [ ] Verify the app launches at its configured normal dimensions and does not maximize or enter full screen when a session connects.
 - [ ] Verify the explicit full-screen button and F11 enter/exit full screen, and Escape exits only when full screen is active.
 - [ ] Verify keyboard-only operation for connect, consent, control permission, revoke and disconnect. Preserve visible focus and accessible names.
-- [ ] Run the focused Rust mapping test, `cargo test --workspace --offline` and the UI build.
+- [x] Run the focused Rust mapping test, `cargo test --workspace --offline` and the UI build (code/build checks only; interactive window behavior still needs a real run).
 
 ### Task 5: Validate direct and relayed network paths
 

@@ -31,8 +31,8 @@ export function SessionFeedback({ status, message, t, onDecide, onDisconnect, on
           {sessionActive && <Button variant="soft" color="red" onClick={onDisconnect}><X size={15} />{t.endSession}</Button>}
           {sessionActive && status.sessionRole === "host" && (
             <label className={`control-permission ${status.controlEnabled ? "is-enabled" : ""}`}>
-              <span>{t.remoteControl}</span>
-              <Switch checked={status.controlEnabled} onCheckedChange={onToggleControl} aria-label={t.remoteControl} />
+              <span>{status.controlEnabled ? t.controlOn : t.remoteControl}</span>
+              <Switch checked={status.controlEnabled} onCheckedChange={onToggleControl} aria-label={status.controlEnabled ? t.blockRemoteControl : t.remoteControl} />
             </label>
           )}
           {sessionActive && status.sessionRole === "viewer" && (

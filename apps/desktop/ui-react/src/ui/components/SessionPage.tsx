@@ -1,5 +1,5 @@
 import { forwardRef, type ReactNode } from "react";
-import { Check, Maximize2, Minimize2, ShieldCheck } from "lucide-react";
+import { Activity, Check, Maximize2, Minimize2, ShieldCheck, Timer } from "lucide-react";
 import { Button, Heading, Switch } from "@radix-ui/themes";
 import type { Translation } from "../copy";
 import type { SessionRole } from "../types";
@@ -9,6 +9,8 @@ type SessionPageProps = {
   controlEnabled: boolean;
   detail: string;
   fullscreen: boolean;
+  frameRate: number | null;
+  inputLatencyP95: number | null;
   t: Translation;
   children: ReactNode;
   onDisconnect: () => void;
@@ -17,7 +19,7 @@ type SessionPageProps = {
 };
 
 export const SessionPage = forwardRef<HTMLHeadingElement, SessionPageProps>(function SessionPage(
-  { role, controlEnabled, detail, fullscreen, t, children, onDisconnect, onToggleControl, onToggleFullscreen },
+  { role, controlEnabled, detail, fullscreen, frameRate, inputLatencyP95, t, children, onDisconnect, onToggleControl, onToggleFullscreen },
   ref,
 ) {
   const host = role === "host";
@@ -32,11 +34,17 @@ export const SessionPage = forwardRef<HTMLHeadingElement, SessionPageProps>(func
         <div className="session-actions">
           {host && (
             <label className={`control-permission ${controlEnabled ? "is-enabled" : ""}`}>
-              <span>{t.remoteControl}</span>
-              <Switch checked={controlEnabled} onCheckedChange={onToggleControl} aria-label={t.remoteControl} />
+              <span>{controlEnabled ? t.controlOn : t.remoteControl}</span>
+              <Switch checked={controlEnabled} onCheckedChange={onToggleControl} aria-label={controlEnabled ? t.blockRemoteControl : t.remoteControl} />
             </label>
           )}
           {role === "viewer" && <span className={`control-state ${controlEnabled ? "is-enabled" : ""}`}>{controlEnabled ? t.controlOn : t.controlOff}</span>}
+          {role === "viewer" && (
+            <div className="session-metrics" aria-label={t.sessionPerformance}>
+              <span title={t.framesPerSecond}><Activity size={14} />{frameRate ?? "—"} {t.framesPerSecond}</span>
+              <span title={t.inputLatencyP95}><Timer size={14} />p95 {inputLatencyP95 ?? "—"} ms</span>
+            </div>
+          )}
           {!host && <Button variant="soft" onClick={onToggleFullscreen} aria-label={fullscreen ? t.exitFullscreen : t.fullscreen}>{fullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}{fullscreen ? t.exitFullscreen : t.fullscreen}</Button>}
           <Button variant="soft" color="red" onClick={onDisconnect}>{t.endSession}</Button>
         </div>

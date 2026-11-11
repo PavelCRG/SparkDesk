@@ -19,7 +19,7 @@ pub enum Command {
     Decide { accepted: bool },
     Disconnect,
     SetRemoteControl(bool),
-    RemoteInput(RemoteInput),
+    RemoteInput { sequence: u32, input: RemoteInput },
 }
 
 struct ActiveSession {
@@ -150,9 +150,9 @@ async fn connect_and_wait(
                             peer.send_permission(enabled).await?;
                         }
                     }
-                    Command::RemoteInput(input) => {
+                    Command::RemoteInput { sequence, input } => {
                         if let Some(peer) = active.as_ref().and_then(|session| session.peer.as_ref()) {
-                            peer.send_input(input).await?;
+                            peer.send_input(sequence, input).await?;
                         }
                     }
                 }

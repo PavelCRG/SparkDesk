@@ -7,7 +7,7 @@ use std::{
 };
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::mpsc;
 
 pub mod identity;
@@ -138,6 +138,7 @@ fn set_remote_control(
 
 #[tauri::command]
 fn send_remote_input(
+    sequence: u32,
     input: input::RemoteInput,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
@@ -160,7 +161,7 @@ fn send_remote_input(
     }
     state
         .commands
-        .send(signaling::Command::RemoteInput(input))
+        .send(signaling::Command::RemoteInput { sequence, input })
         .map_err(|_| "Signaling service is unavailable".into())
 }
 
@@ -168,10 +169,53 @@ fn can_toggle_remote_control(status: &AppStatus) -> bool {
     status.session_role == SessionRole::Host && status.notice_state == NoticeState::Connected
 }
 
+fn can_open_session_window(status: &AppStatus) -> bool {
+    status.notice_state == NoticeState::Connected && status.session_role != SessionRole::None
+}
+
 fn can_send_remote_input(status: &AppStatus) -> bool {
     status.session_role == SessionRole::Viewer
         && status.notice_state == NoticeState::Connected
         && status.control_enabled
+}
+
+#[tauri::command]
+fn open_session_window(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let status = state.status.lock().map_err(|_| "app status unavailable")?;
+    if !can_open_session_window(&status) {
+        return Err("A connected session is required".into());
+    }
+    drop(status);
+
+    let window = if let Some(window) = app.get_webview_window("session") {
+        window
+    } else {
+        let window = tauri::WebviewWindowBuilder::new(
+            &app,
+            "session",
+            tauri::WebviewUrl::App("index.html".into()),
+        )
+        .title("SparkDesk")
+        .inner_size(1280.0, 800.0)
+        .min_inner_size(900.0, 620.0)
+        .decorations(false)
+        .build()
+        .map_err(|error| error.to_string())?;
+        let app_handle = app.clone();
+        window.on_window_event(move |event| {
+            if matches!(event, tauri::WindowEvent::CloseRequested { .. }) {
+                if let Some(state) = app_handle.try_state::<AppState>() {
+                    state.control_allowed.store(false, Ordering::Release);
+                    let _ = state.commands.send(signaling::Command::Disconnect);
+                }
+                let _ = app_handle.emit("session-window-closed", ());
+            }
+        });
+        window
+    };
+
+    window.show().map_err(|error| error.to_string())?;
+    window.set_focus().map_err(|error| error.to_string())
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -217,7 +261,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             decide,
             disconnect,
             set_remote_control,
-            send_remote_input
+            send_remote_input,
+            open_session_window
         ])
         .run(tauri::generate_context!())?;
     Ok(())
@@ -226,8 +271,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::{
-        AppStatus, NetworkState, NoticeState, SessionRole, can_send_remote_input,
-        can_toggle_remote_control,
+        AppStatus, NetworkState, NoticeState, SessionRole, can_open_session_window,
+        can_send_remote_input, can_toggle_remote_control,
     };
 
     #[test]
@@ -266,5 +311,23 @@ mod tests {
         assert!(can_send_remote_input(&status));
         status.notice_state = NoticeState::Idle;
         assert!(!can_send_remote_input(&status));
+    }
+
+    #[test]
+    fn session_window_opens_only_for_an_active_session() {
+        let mut status = AppStatus {
+            device_id: String::new(),
+            network_state: NetworkState::Online,
+            notice_state: NoticeState::Pending,
+            session_role: SessionRole::Viewer,
+            control_enabled: false,
+            detail: String::new(),
+        };
+
+        assert!(!can_open_session_window(&status));
+        status.notice_state = NoticeState::Connected;
+        assert!(can_open_session_window(&status));
+        status.session_role = SessionRole::None;
+        assert!(!can_open_session_window(&status));
     }
 }
