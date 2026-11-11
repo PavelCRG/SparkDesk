@@ -64,6 +64,7 @@ Stages are sequential: do not tune frame rate before proving the basic session, 
 - Added `docs/remote-control-validation.md` with source-configured values and an explicit pending row for real measurements. No hardware, FPS or latency results were fabricated.
 - Rechecked README claims: Windows primary-monitor scope, separate host consent, direct ICE with no TURN configuration, and protected Windows surfaces are documented.
 - `cargo fmt --all -- --check`, `cargo test --workspace --offline` (35 tests), `cargo build -p sparkdesk-desktop --offline`, and the React production build pass. NSIS packaging succeeded before these latest code changes; it must be rebuilt before install verification. MSI packaging fails with WiX `LGHT0217` because Windows Installer Service is unavailable here. The NSIS installer was not installed.
+- The whole-branch review found that rejected input acknowledgements were not reflected in viewer diagnostics and that the shutdown frame-drop count had no final snapshot. Both were fixed and covered by focused tests before the 35-test verification run.
 - The live two-window interaction gate could not be performed in this execution environment: launched backend processes connected to signaling, but no interactive windows were exposed. Therefore the release gates remain open for real screen/input interaction, measured performance, separate-network ICE, soak, and fresh-install evidence. Do not treat this record as a release sign-off.
 
 ## Remaining acceptance gates (2026-11-11)
