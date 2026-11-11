@@ -66,6 +66,7 @@ Stages are sequential: do not tune frame rate before proving the basic session, 
 - `cargo fmt --all -- --check`, `cargo test --workspace --offline` (35 tests), `cargo build -p sparkdesk-desktop --offline`, and the React production build pass. NSIS packaging succeeded before these latest code changes; it must be rebuilt before install verification. MSI packaging fails with WiX `LGHT0217` because Windows Installer Service is unavailable here. The NSIS installer was not installed.
 - The whole-branch review found that rejected input acknowledgements were not reflected in viewer diagnostics and that the shutdown frame-drop count had no final snapshot. Both were fixed and covered by focused tests before the 35-test verification run.
 - The live two-window interaction gate could not be performed in this execution environment: launched backend processes connected to signaling, but no interactive windows were exposed. Therefore the release gates remain open for real screen/input interaction, measured performance, separate-network ICE, soak, and fresh-install evidence. Do not treat this record as a release sign-off.
+- Follow-up live-test attempt: the local Worker answered on `127.0.0.1:8791`. SparkDesk initially failed WebView2 creation (`HRESULT 0x800700AA`, resource in use); separate temporary `WEBVIEW2_USER_DATA_FOLDER` values let both native windows start. Window capture in this execution session returned an invalid desktop handle, `PrintWindow` returned a blank image, and UI Automation exposed only the root window, so no UI state or session interaction could be verified. The manual gates remain open; no performance or connectivity results are claimed.
 
 ## Remaining acceptance gates (2026-11-11)
 
@@ -185,7 +186,8 @@ Targets are a test gate, not a guarantee over arbitrary internet links. A 60 Hz 
 - [ ] Verify decline sends no screen frames; control starts off; revoke stops input immediately while viewing may continue; disconnect stops capture and releases all held inputs.
 - [ ] Run a 10-minute two-PC session while moving the pointer and typing; record frame rate, RTT, memory and CPU, and confirm the UI remains responsive.
 - [x] Run `cargo fmt --all -- --check`, `cargo test --workspace --offline` (35 tests), `cargo build -p sparkdesk-desktop --offline`, and `npm --prefix apps/desktop/ui-react run build` (code verification only; no two-client acceptance implied).
-- [ ] Build the existing Windows installer target and verify fresh install, first launch and normal-size startup without reusing the development profile or credentials.
+- [x] Build the existing Windows NSIS installer target after the latest code changes (`npm run tauri -- build --bundles nsis`; 4.59 MiB).
+- [ ] Verify fresh install, first launch and normal-size startup without reusing the development profile or credentials.
 - [x] README documents attended Windows sharing, owner consent, separate control permission, direct-only connectivity without TURN, and Windows protected-surface limitations.
 
 **Definition of done:** All gates above have recorded evidence from real Windows clients. A successful compile, browser preview, or single-process test alone does not complete this plan.

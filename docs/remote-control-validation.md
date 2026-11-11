@@ -24,7 +24,7 @@ These values describe source configuration, not measured throughput or latency.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Pending | Not recorded | Not run | Not measured | Not measured | Not measured | Not measured | Needs two interactive Windows clients |
 
-The current execution environment did not expose the launched desktop windows for interaction. Therefore no screen motion, click, typing, revoke-while-held, cross-network, 10-minute soak, or installer fresh-install result is claimed.
+The initial launches failed to create WebView2 windows with `HRESULT 0x800700AA` (resource in use). Giving each test instance a separate temporary `WEBVIEW2_USER_DATA_FOLDER` allowed both native SparkDesk windows to start. This execution session still could not read their contents: desktop capture returned an invalid screen handle, `PrintWindow` returned a blank frame, and UI Automation exposed only the root window. The two-window accept/view/control flow therefore remains unverified; no screen motion, click, typing, revoke-while-held, cross-network, 10-minute soak, or installer fresh-install result is claimed.
 
 ## Code verification
 
@@ -32,7 +32,7 @@ The current execution environment did not expose the launched desktop windows fo
 - `cargo test --workspace --offline`: passed (35 tests).
 - `cargo build -p sparkdesk-desktop --offline`: passed.
 - `npm --prefix apps/desktop/ui-react run build`: passed, including the diagnostics disclosure and bilingual copy.
-- NSIS bundle: built `target/release/bundle/nsis/SparkDesk_0.1.0_x64-setup.exe` (4,816,346 bytes). It was not installed.
+- NSIS bundle: freshly rebuilt after the latest code changes with `npm run tauri -- build --bundles nsis` (4.59 MiB). It was not installed.
 - MSI bundle: failed in WiX `light.exe` with `LGHT0217`; Windows Installer Service was unavailable in this environment. No MSI or fresh-install result is claimed.
 
 ## Required next live run
