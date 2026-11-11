@@ -8,7 +8,7 @@ type RemoteViewerProps = {
   fullscreen: boolean;
   t: Translation;
   onInput: (input: RemoteInput) => void;
-  onFrameRate: (framesPerSecond: number) => void;
+  onFrameMetrics: (framesPerSecond: number, renderedFrames: number, lastFrameId: number) => void;
 };
 
 function point(event: PointerEvent<HTMLElement> | WheelEvent<HTMLElement>, image: HTMLCanvasElement | null) {
@@ -30,7 +30,7 @@ function point(event: PointerEvent<HTMLElement> | WheelEvent<HTMLElement>, image
   };
 }
 
-export function RemoteViewer({ controlEnabled, fullscreen, t, onInput, onFrameRate }: RemoteViewerProps) {
+export function RemoteViewer({ controlEnabled, fullscreen, t, onInput, onFrameMetrics }: RemoteViewerProps) {
   const viewer = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const heldKeys = useRef(new Set<string>());
@@ -38,7 +38,7 @@ export function RemoteViewer({ controlEnabled, fullscreen, t, onInput, onFrameRa
   const lastPointer = useRef({ x: 0, y: 0 });
   const pendingPointer = useRef<{ x: number; y: number } | null>(null);
   const pointerFrame = useRef<number | null>(null);
-  const renderedFrames = useRef({ startedAt: performance.now(), count: 0 });
+  const renderedFrames = useRef({ startedAt: performance.now(), count: 0, lastFrameId: 0 });
   const hasRenderedFrame = useRef(false);
   const [hasFrame, setHasFrame] = useState(false);
 
@@ -78,7 +78,9 @@ export function RemoteViewer({ controlEnabled, fullscreen, t, onInput, onFrameRa
                 hasRenderedFrame.current = true;
                 setHasFrame(true);
               }
-              recordRenderedFrame();
+              const stats = renderedFrames.current;
+              stats.count += 1;
+              stats.lastFrameId = frame.id;
             }
           }
           bitmap.close();
@@ -101,7 +103,18 @@ export function RemoteViewer({ controlEnabled, fullscreen, t, onInput, onFrameRa
       unlisten?.();
       if (pointerFrame.current !== null) cancelAnimationFrame(pointerFrame.current);
     };
-  }, []);
+  }, [onFrameMetrics]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const stats = renderedFrames.current;
+      const now = performance.now();
+      onFrameMetrics(Math.round(stats.count * 1000 / (now - stats.startedAt)), stats.count, stats.lastFrameId);
+      stats.startedAt = now;
+      stats.count = 0;
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [onFrameMetrics]);
 
   const releaseInputs = () => {
     for (const code of heldKeys.current) onInput({ type: "key", code, down: false });
@@ -162,22 +175,6 @@ export function RemoteViewer({ controlEnabled, fullscreen, t, onInput, onFrameRa
     if (!controlEnabled || !heldKeys.current.delete(event.code)) return;
     event.preventDefault();
     onInput({ type: "key", code: event.code, down: false });
-  };
-
-  const recordRenderedFrame = () => {
-    const sample = renderedFrames.current;
-    sample.count += 1;
-    const now = performance.now();
-    if (sample.count === 1) {
-      sample.startedAt = now;
-      return;
-    }
-    const elapsed = now - sample.startedAt;
-    if (elapsed >= 1000) {
-      onFrameRate(Math.round(sample.count * 1000 / elapsed));
-      sample.startedAt = now;
-      sample.count = 0;
-    }
   };
 
   return (

@@ -56,9 +56,13 @@ Stages are sequential: do not tune frame rate before proving the basic session, 
 ## Execution record (2026-11-11)
 
 - Added regression coverage for pausing capture at the existing screen-channel backlog threshold and for replacing an incomplete frame with a newer frame. The implementation already had both behaviors; tests confirm them, so no transport tuning was justified without the live baseline.
+- Added per-session local diagnostics for capture/resize/encode timing, JPEG payload bytes, frame IDs and counts, backlog skips, incomplete frames/stale chunks, input send/dispatch/ack, and WebRTC connection state. The session window shows them in a keyboard-accessible bilingual disclosure; metrics contain no frame pixels, typed text or device IDs.
+- Added bounded reporting of viewer-rendered frame counts once per second. Input RTT p50/p95 now includes all acknowledgements, including rejected OS dispatches, so a failed remote action still contributes its actual round-trip time.
+- Expanded the timing breakdown to include chunk-send time (including send-buffer waits), completed-frame reassembly latency and the synchronous Tauri event-emission call. The WebRTC crate's configured 512 KiB cap blocks each channel's `send` until capacity returns; the app separately skips capture at 256 KiB outstanding before a frame starts.
+- Added held-input release tests; if Windows rejects a key/button-up event, SparkDesk retains that held input for retry on the next permission poll.
 - Added `docs/remote-control-validation.md` with source-configured values and an explicit pending row for real measurements. No hardware, FPS or latency results were fabricated.
 - Rechecked README claims: Windows primary-monitor scope, separate host consent, direct ICE with no TURN configuration, and protected Windows surfaces are documented.
-- `cargo fmt --all -- --check`, `cargo test --workspace --offline` (25 tests), `cargo build -p sparkdesk-desktop --offline`, and the React production build pass. NSIS packaging succeeds; MSI packaging fails with WiX `LGHT0217` because Windows Installer Service is unavailable here. The NSIS installer was not installed.
+- `cargo fmt --all -- --check`, `cargo test --workspace --offline` (31 tests), `cargo build -p sparkdesk-desktop --offline`, and the React production build pass. NSIS packaging succeeded before these latest code changes; it must be rebuilt before install verification. MSI packaging fails with WiX `LGHT0217` because Windows Installer Service is unavailable here. The NSIS installer was not installed.
 - The live two-window interaction gate could not be performed in this execution environment: launched backend processes connected to signaling, but no interactive windows were exposed. Therefore the release gates remain open for real screen/input interaction, measured performance, separate-network ICE, soak, and fresh-install evidence. Do not treat this record as a release sign-off.
 
 ## Global Constraints
@@ -101,7 +105,7 @@ Targets are a test gate, not a guarantee over arbitrary internet links. A 60 Hz 
 
 - [ ] Start two windowed desktop instances on one Windows machine using the documented default and `--profile=helper` identities; verify both distinct IDs are online.
 - [ ] Run the owner-accept / viewer-connect flow. Record whether frames arrive and whether pointer, buttons, wheel, ordinary keys and modifiers reach the host.
-- [ ] Add bounded diagnostic counters for capture/encode duration, bytes per frame, frame IDs sent/received/rendered, dropped/incomplete frames, input send/dispatch/ack and connection state. Keep diagnostics local; never record frame contents, typed text or device secrets.
+- [x] Add bounded diagnostic counters for capture/resize/encode duration, bytes per frame, frame IDs sent/received/rendered, dropped/incomplete chunks, input send/dispatch/ack and connection state. Keep diagnostics local; never record frame contents, typed text or device secrets.
 - [x] Add an input acknowledgement carrying a per-session sequence number after host validation and OS dispatch. The viewer measures round-trip with its monotonic clock; it does not compare unsynchronized host/viewer clocks.
 - [ ] Write the baseline to a new `docs/remote-control-validation.md` with the machine/network details and measured p50/p95 values.
 - [x] Update the spec's `Current state` and transport limits to describe the implemented code and remaining non-goals.
@@ -113,12 +117,12 @@ Targets are a test gate, not a guarantee over arbitrary internet links. A 60 Hz 
 
 **Files:** `apps/desktop/src/input.rs`, `apps/desktop/src/peer.rs`, `apps/desktop/src/main.rs`, `apps/desktop/ui-react/src/ui/components/RemoteViewer.tsx`.
 
-- [ ] Add a failing Rust test named `revoking_control_releases_all_held_keys_and_buttons` covering a held modifier and mouse button.
+- [x] Add a failing Rust test named `revoking_control_releases_all_held_keys_and_buttons` covering a held modifier and mouse button.
 - [x] Add a Rust test named `pointer_coordinates_map_to_capture_monitor_edges` covering all four edges and a non-zero/negative monitor origin.
-- [ ] Run each new test and confirm it fails for the missing behavior before implementation.
+- [x] Run the held-input cleanup test and confirm it fails for the missing release seam before implementation.
 - [ ] Verify `pointercancel`, viewer blur and control revoke in the real two-instance run.
-- [ ] Implement the smallest fixes in the existing input/viewer flow; preserve allowlists, payload bounds and the current per-second rate limit unless Task 1 measurements prove it rejects normal input.
-- [ ] Re-run the focused tests, then `cargo test --workspace --offline` and the UI build.
+- [x] Implement the smallest fixes in the existing input/viewer flow; preserve allowlists, payload bounds and the current per-second rate limit unless Task 1 measurements prove it rejects normal input.
+- [x] Re-run the focused tests, then `cargo test --workspace --offline` and the UI build.
 - [ ] On the two-instance Windows run, verify click, drag, right-click, wheel, text entry, Ctrl/Alt/Shift combinations, revoke while held, disconnect while held and Alt+Tab. Confirm no action reaches the host after revoke.
 
 **Gate:** No test or manual step may show an accepted OS input before host permission or a stuck input after revoke/disconnect.
@@ -127,8 +131,8 @@ Targets are a test gate, not a guarantee over arbitrary internet links. A 60 Hz 
 
 **Files:** `apps/desktop/src/screen.rs`, `apps/desktop/src/peer.rs`, `apps/desktop/ui-react/src/ui/components/RemoteViewer.tsx`, `apps/desktop/ui-react/src/ui/types.ts`, `docs/remote-control-validation.md`.
 
-- [ ] Add failing tests named `frame_send_policy_drops_stale_frames_when_channel_is_backlogged` and `frame_assembler_discards_superseded_incomplete_frame`; keep the queue policy small and independent of WebRTC so it can be tested without a live peer.
-- [ ] Run both tests and confirm they fail for stale-frame handling before changing the sender or assembler.
+- [x] Add regression tests named `frame_send_policy_pauses_capture_when_channel_is_backlogged` and `frame_assembler_discards_superseded_incomplete_frame`; keep the queue policy small and independent of WebRTC so it can be tested without a live peer. Also verify incomplete-frame accounting when the session ends.
+- [x] Run the tests and confirm the existing backlog and superseding behavior; the missing incomplete-at-shutdown accounting test failed before its implementation.
 - [ ] Measure capture, resize, JPEG encode, chunk send, receive/reassembly, UI event and render intervals separately at 1280×720. Confirm the displayed frame rate against Task 1's baseline.
 - [x] Bound in-flight screen data using the WebRTC channel's buffered amount or an equivalent single-frame budget. Skip new capture when backlogged; keep control on its separate channel.
 - [ ] Select a capture interval, JPEG quality and downscale policy from the measurements. Keep the first pass on the existing JPEG transport and document chosen values; do not add a codec dependency before profiling.

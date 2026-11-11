@@ -25,6 +25,7 @@ pub enum Command {
     Disconnect,
     SetRemoteControl(bool),
     RemoteInput { sequence: u32, input: RemoteInput },
+    ViewerFramesRendered { count: u32, last_id: u32 },
 }
 
 struct ActiveSession {
@@ -167,6 +168,11 @@ async fn connect_and_wait(
                     Command::RemoteInput { sequence, input } => {
                         if let Some(peer) = active.as_ref().and_then(|session| session.peer.as_ref()) {
                             peer.send_input(sequence, input).await?;
+                        }
+                    }
+                    Command::ViewerFramesRendered { count, last_id } => {
+                        if let Some(peer) = active.as_ref().and_then(|session| session.peer.as_ref()) {
+                            peer.record_rendered_frames(count, last_id);
                         }
                     }
                 }

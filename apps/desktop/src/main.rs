@@ -10,6 +10,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::mpsc;
 
+mod diagnostics;
 pub mod identity;
 mod input;
 mod peer;
@@ -165,6 +166,33 @@ fn send_remote_input(
         .map_err(|_| "Signaling service is unavailable".into())
 }
 
+#[tauri::command]
+fn report_viewer_frames(
+    frame_count: u32,
+    last_frame_id: u32,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    if !can_report_rendered_frames(frame_count) {
+        return Err("Invalid viewer frame report".into());
+    }
+    let status = state.status.lock().map_err(|_| "app status unavailable")?;
+    if status.session_role != SessionRole::Viewer || status.notice_state != NoticeState::Connected {
+        return Err("A connected viewer session is required".into());
+    }
+    drop(status);
+    state
+        .commands
+        .send(signaling::Command::ViewerFramesRendered {
+            count: frame_count,
+            last_id: last_frame_id,
+        })
+        .map_err(|_| "Signaling service is unavailable".into())
+}
+
+fn can_report_rendered_frames(count: u32) -> bool {
+    (1..=120).contains(&count)
+}
+
 fn can_toggle_remote_control(status: &AppStatus) -> bool {
     status.session_role == SessionRole::Host && status.notice_state == NoticeState::Connected
 }
@@ -262,6 +290,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             disconnect,
             set_remote_control,
             send_remote_input,
+            report_viewer_frames,
             open_session_window
         ])
         .run(tauri::generate_context!())?;
@@ -272,7 +301,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 mod tests {
     use super::{
         AppStatus, NetworkState, NoticeState, SessionRole, can_open_session_window,
-        can_send_remote_input, can_toggle_remote_control,
+        can_report_rendered_frames, can_send_remote_input, can_toggle_remote_control,
     };
 
     #[test]
@@ -329,5 +358,13 @@ mod tests {
         assert!(can_open_session_window(&status));
         status.session_role = SessionRole::None;
         assert!(!can_open_session_window(&status));
+    }
+
+    #[test]
+    fn viewer_frame_reports_accept_only_one_second_of_bounded_samples() {
+        assert!(!can_report_rendered_frames(0));
+        assert!(can_report_rendered_frames(1));
+        assert!(can_report_rendered_frames(120));
+        assert!(!can_report_rendered_frames(121));
     }
 }

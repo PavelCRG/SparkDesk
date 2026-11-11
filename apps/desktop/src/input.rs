@@ -208,6 +208,15 @@ impl MonitorGeometry {
 }
 
 impl HeldInput {
+    fn release_all_with(
+        &mut self,
+        mut release_key: impl FnMut(u16) -> bool,
+        mut release_button: impl FnMut(MouseButton) -> bool,
+    ) {
+        self.keys.retain(|key| !release_key(*key));
+        self.buttons.retain(|button| !release_button(*button));
+    }
+
     #[cfg(target_os = "windows")]
     pub fn apply(
         &mut self,
@@ -287,30 +296,34 @@ impl HeldInput {
 
     #[cfg(target_os = "windows")]
     pub fn release_all(&mut self) {
-        for key in self.keys.drain() {
-            let _ = send(INPUT {
-                r#type: INPUT_KEYBOARD,
-                Anonymous: INPUT_0 {
-                    ki: KEYBDINPUT {
-                        wVk: key,
-                        dwFlags: KEYEVENTF_KEYUP,
-                        ..Default::default()
+        self.release_all_with(
+            |key| {
+                send(INPUT {
+                    r#type: INPUT_KEYBOARD,
+                    Anonymous: INPUT_0 {
+                        ki: KEYBDINPUT {
+                            wVk: key,
+                            dwFlags: KEYEVENTF_KEYUP,
+                            ..Default::default()
+                        },
                     },
-                },
-            });
-        }
-        for button in self.buttons.drain() {
-            let _ = send(INPUT {
-                r#type: INPUT_MOUSE,
-                Anonymous: INPUT_0 {
-                    mi: windows_sys::Win32::UI::Input::KeyboardAndMouse::MOUSEINPUT {
-                        dwFlags: mouse_flags(button, false),
-                        mouseData: mouse_data(button),
-                        ..Default::default()
+                })
+                .is_ok()
+            },
+            |button| {
+                send(INPUT {
+                    r#type: INPUT_MOUSE,
+                    Anonymous: INPUT_0 {
+                        mi: windows_sys::Win32::UI::Input::KeyboardAndMouse::MOUSEINPUT {
+                            dwFlags: mouse_flags(button, false),
+                            mouseData: mouse_data(button),
+                            ..Default::default()
+                        },
                     },
-                },
-            });
-        }
+                })
+                .is_ok()
+            },
+        );
     }
 }
 
@@ -358,7 +371,10 @@ fn send(input: INPUT) -> Result<(), &'static str> {
 
 #[cfg(test)]
 mod tests {
-    use super::{InputRateLimit, MonitorGeometry, RemoteInput, parse_input, validate_input};
+    use super::{
+        HeldInput, InputRateLimit, MonitorGeometry, MouseButton, RemoteInput, parse_input,
+        validate_input,
+    };
     use std::time::{Duration, Instant};
 
     #[test]
@@ -431,5 +447,43 @@ mod tests {
         assert_eq!(monitor.pixel_at(u16::MAX, 0), (-1, 120));
         assert_eq!(monitor.pixel_at(0, u16::MAX), (-1920, 1199));
         assert_eq!(monitor.pixel_at(u16::MAX, u16::MAX), (-1, 1199));
+    }
+
+    #[test]
+    fn revoking_control_releases_all_held_keys_and_buttons() {
+        let mut held = HeldInput::default();
+        held.keys.insert(0x11);
+        held.buttons.insert(MouseButton::Left);
+
+        let mut released_keys = Vec::new();
+        let mut released_buttons = Vec::new();
+        held.release_all_with(
+            |key| {
+                released_keys.push(key);
+                true
+            },
+            |button| {
+                released_buttons.push(button);
+                true
+            },
+        );
+        assert_eq!(released_keys, vec![0x11]);
+        assert_eq!(released_buttons, vec![MouseButton::Left]);
+        assert!(held.keys.is_empty());
+        assert!(held.buttons.is_empty());
+    }
+
+    #[test]
+    fn held_input_is_kept_for_retry_when_release_dispatch_fails() {
+        let mut held = HeldInput::default();
+        held.keys.insert(0x11);
+        held.buttons.insert(MouseButton::Left);
+        held.release_all_with(|_| false, |_| false);
+        assert_eq!(held.keys.len(), 1);
+        assert_eq!(held.buttons.len(), 1);
+
+        held.release_all_with(|_| true, |_| true);
+        assert!(held.keys.is_empty());
+        assert!(held.buttons.is_empty());
     }
 }

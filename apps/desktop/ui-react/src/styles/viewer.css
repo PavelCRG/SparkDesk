@@ -89,6 +89,92 @@
   color: #79aef6;
 }
 
+.session-diagnostics {
+  align-self: flex-end;
+  width: min(100%, 760px);
+  color: #a8b2bc;
+  font-size: 11px;
+}
+
+.session-diagnostics summary {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 11px;
+  border: 1px solid #2d3841;
+  border-radius: 8px;
+  background: #11171c;
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.session-diagnostics summary:focus-visible {
+  outline: 2px solid #aeb8bf;
+  outline-offset: 2px;
+}
+
+.session-diagnostics summary svg {
+  color: #8eacd0;
+}
+
+.diagnostics-connection {
+  margin-left: auto;
+  color: #8fc9ac;
+}
+
+.diagnostics-connection.is-failed {
+  color: #ef9b98;
+}
+
+.session-diagnostics dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 20px;
+  margin: 8px 0 0;
+  padding: 4px 12px;
+  border: 1px solid #2d3841;
+  border-radius: 8px;
+  background: #11171c;
+}
+
+.session-diagnostics dl > div {
+  display: flex;
+  min-width: 0;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid #26313a;
+}
+
+.session-diagnostics dt {
+  color: #929eaa;
+}
+
+.session-diagnostics dd {
+  margin: 0;
+  color: #e0e7ed;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+@media (max-width: 620px) {
+  .session-diagnostics {
+    align-self: stretch;
+  }
+
+  .session-diagnostics dl {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (forced-colors: active) {
+  .session-diagnostics summary,
+  .session-diagnostics dl {
+    border-color: CanvasText;
+  }
+}
+
 .host-session-card {
   display: flex;
   min-height: 110px;

@@ -6,7 +6,7 @@ Turn the current approved direct WebRTC connection into a usable Windows remote-
 
 ## Current state
 
-The desktop uses Rust/Tauri for identity, signaling, WebRTC, Windows capture and input dispatch, with a React UI. An accepted connection opens a dedicated session window while the home window remains available. Screen frames use bounded JPEG chunks over an unordered, zero-retransmit data channel; control uses a separate reliable channel. The viewer reports image frame rate and input-dispatch RTT. A two-computer performance and connectivity run has not yet been recorded.
+The desktop uses Rust/Tauri for identity, signaling, WebRTC, Windows capture and input dispatch, with a React UI. An accepted connection opens a dedicated session window while the home window remains available. Screen frames use bounded JPEG chunks over an unordered, zero-retransmit data channel; control uses a separate reliable channel. The viewer reports rendered frame rate and input-dispatch RTT, and the session window exposes local bounded timing/counter diagnostics for capture, encoding, send, reassembly and event emission. A two-computer performance and connectivity run has not yet been recorded.
 
 ## Goals
 

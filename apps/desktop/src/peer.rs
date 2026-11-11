@@ -21,11 +21,12 @@ use webrtc::peer_connection::{
 };
 
 use crate::{
+    diagnostics::{PeerConnectionStatus, SessionDiagnostics},
     identity::{DeviceIdentity, verify_peer_proof},
     input::{HeldInput, InputRateLimit, MonitorGeometry, RemoteInput, validate_input},
     screen::{
         FrameAssembler, SCREEN_FRAME_INTERVAL, SCREEN_SEND_BUFFER_BYTES, can_capture_screen_frame,
-        chunk_frame_iter, validate_jpeg,
+        capture_primary, chunk_frame_iter, validate_jpeg,
     },
 };
 
@@ -44,6 +45,7 @@ struct Handler {
     gathered: Arc<Notify>,
     connected: Arc<AtomicBool>,
     failed: Arc<AtomicBool>,
+    diagnostics: Arc<SessionDiagnostics>,
     incoming_channels: mpsc::Sender<Arc<dyn DataChannel>>,
 }
 
@@ -56,6 +58,17 @@ impl PeerConnectionEventHandler for Handler {
     }
 
     async fn on_connection_state_change(&self, state: RTCPeerConnectionState) {
+        let status = match state {
+            RTCPeerConnectionState::Connected => PeerConnectionStatus::Connected,
+            RTCPeerConnectionState::Disconnected => PeerConnectionStatus::Disconnected,
+            RTCPeerConnectionState::Failed => PeerConnectionStatus::Failed,
+            RTCPeerConnectionState::Closed => PeerConnectionStatus::Closed,
+            RTCPeerConnectionState::New | RTCPeerConnectionState::Connecting => {
+                PeerConnectionStatus::Connecting
+            }
+            _ => PeerConnectionStatus::Connecting,
+        };
+        self.diagnostics.set_connection_status(status);
         self.connected.store(
             state == RTCPeerConnectionState::Connected,
             Ordering::Release,
@@ -84,6 +97,7 @@ pub struct PeerSession {
     offer_sdp: Option<String>,
     answer_sdp: Option<String>,
     running: Arc<AtomicBool>,
+    diagnostics: Arc<SessionDiagnostics>,
 }
 
 impl PeerSession {
@@ -353,6 +367,7 @@ impl PeerSession {
             .events
             .take()
             .ok_or("peer data channels already started")?;
+        let diagnostics = self.diagnostics.clone();
         tokio::spawn(run_data_events(
             events,
             control,
@@ -360,11 +375,12 @@ impl PeerSession {
             app,
             control_allowed,
             MonitorGeometry::primary().ok(),
+            diagnostics.clone(),
         ));
         if host {
             let running = self.running.clone();
             tokio::spawn(async move {
-                send_screen_frames(screen, running).await;
+                send_screen_frames(screen, running, diagnostics).await;
             });
         }
         self.send_permission(false).await?;
@@ -379,7 +395,13 @@ impl PeerSession {
     pub async fn send_input(&self, sequence: u32, input: RemoteInput) -> Result<(), String> {
         validate_input(&input).map_err(str::to_owned)?;
         self.send_control(&PeerControlMessage::Input { sequence, input })
-            .await
+            .await?;
+        self.diagnostics.input_sent();
+        Ok(())
+    }
+
+    pub fn record_rendered_frames(&self, count: u32, last_id: u32) {
+        self.diagnostics.rendered_batch(u64::from(count), last_id);
     }
 
     async fn send_control(&self, message: &PeerControlMessage) -> Result<(), String> {
@@ -410,6 +432,7 @@ impl PeerSession {
         let failed = Arc::new(AtomicBool::new(false));
         let authenticated = Arc::new(AtomicBool::new(false));
         let running = Arc::new(AtomicBool::new(true));
+        let diagnostics = Arc::new(SessionDiagnostics::default());
         let channels = Arc::new(Mutex::new(HashMap::new()));
         let (event_tx, events) = mpsc::channel(16);
         let (incoming_channels, mut incoming_rx) = mpsc::channel(4);
@@ -432,6 +455,7 @@ impl PeerSession {
                 gathered: gathered.clone(),
                 connected: connected.clone(),
                 failed: failed.clone(),
+                diagnostics: diagnostics.clone(),
                 // The UI must wait for the signed peer challenge before declaring a session ready.
                 incoming_channels,
             }))
@@ -452,6 +476,7 @@ impl PeerSession {
                 offer_sdp: None,
                 answer_sdp: None,
                 running,
+                diagnostics,
             },
             gathered,
         ))
@@ -505,7 +530,11 @@ fn screen_data_channel_init() -> RTCDataChannelInit {
     }
 }
 
-async fn send_screen_frames(channel: Arc<dyn DataChannel>, running: Arc<AtomicBool>) {
+async fn send_screen_frames(
+    channel: Arc<dyn DataChannel>,
+    running: Arc<AtomicBool>,
+    diagnostics: Arc<SessionDiagnostics>,
+) {
     let mut interval = tokio::time::interval(SCREEN_FRAME_INTERVAL);
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut frame_id = 0u32;
@@ -518,19 +547,29 @@ async fn send_screen_frames(channel: Arc<dyn DataChannel>, running: Arc<AtomicBo
             break;
         };
         if !can_capture_screen_frame(outstanding) {
+            diagnostics.skipped_backlog();
             continue;
         }
-        let Ok(mut frame) = tokio::task::spawn_blocking(crate::screen::capture_primary)
-            .await
-            .unwrap_or_else(|error| Err(error.to_string()))
+        let Ok(Ok((mut frame, timings))) = tokio::task::spawn_blocking(capture_primary).await
         else {
             continue;
         };
         frame.id = frame_id;
         frame_id = frame_id.wrapping_add(1);
+        let frame_bytes = frame.jpeg.len();
+        let id = frame.id;
+        diagnostics.capture(
+            id,
+            frame_bytes,
+            timings.capture_us,
+            timings.resize_us,
+            timings.encode_us,
+        );
         let Ok(chunks) = chunk_frame_iter(&frame) else {
             continue;
         };
+        let send_started = Instant::now();
+        let mut fully_sent = true;
         for chunk in chunks {
             if !running.load(Ordering::Acquire)
                 || channel
@@ -538,8 +577,13 @@ async fn send_screen_frames(channel: Arc<dyn DataChannel>, running: Arc<AtomicBo
                     .await
                     .is_err()
             {
+                fully_sent = false;
                 break;
             }
+        }
+        diagnostics.send_duration(send_started.elapsed().as_micros() as u64);
+        if fully_sent {
+            diagnostics.sent(id, frame_bytes);
         }
     }
 }
@@ -551,11 +595,14 @@ async fn run_data_events(
     app: AppHandle,
     control_allowed: Arc<AtomicBool>,
     monitor: Option<MonitorGeometry>,
+    diagnostics: Arc<SessionDiagnostics>,
 ) {
     let mut frames = FrameAssembler::default();
     let mut input_limit = InputRateLimit::new(Instant::now());
     let mut held = HeldInput::default();
     let mut permission_poll = tokio::time::interval(Duration::from_millis(50));
+    let mut diagnostics_poll = tokio::time::interval(Duration::from_secs(1));
+    diagnostics_poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     loop {
         tokio::select! {
             event = events.recv() => {
@@ -566,15 +613,30 @@ async fn run_data_events(
                     _ => continue,
                 };
                 if event.label == "screen" && !host && !message.is_string {
-                    if let Ok(Some(frame)) = frames.push(&message.data) {
+                    let incomplete_before = frames.incomplete_frames_dropped();
+                    let stale_before = frames.stale_chunks_dropped();
+                    let frame = frames.push(&message.data);
+                    if let Some(elapsed_us) = frames.take_reassembly_us() {
+                        diagnostics.reassembly_duration(elapsed_us);
+                    }
+                    if frames.incomplete_frames_dropped() > incomplete_before {
+                        diagnostics.dropped_incomplete_frame();
+                    }
+                    if frames.stale_chunks_dropped() > stale_before {
+                        diagnostics.dropped_stale_chunk();
+                    }
+                    if let Ok(Some(frame)) = frame {
                         if validate_jpeg(&frame) {
+                            diagnostics.received(frame.id, frame.jpeg.len());
                             let payload = ScreenFrameEvent {
                                 id: frame.id,
                                 width: frame.width,
                                 height: frame.height,
                                 jpeg_base64: BASE64.encode(frame.jpeg),
                             };
+                            let event_started = Instant::now();
                             let _ = app.emit("screen-frame", payload);
+                            diagnostics.event_duration(event_started.elapsed().as_micros() as u64);
                         }
                     }
                 } else if event.label == "control" && message.is_string && message.data.len() <= crate::input::MAX_INPUT_BYTES {
@@ -597,11 +659,15 @@ async fn run_data_events(
                                     let _ = input;
                                     applied = false;
                                 }
+                                diagnostics.input_dispatched(applied);
                                 if let Ok(text) = serde_json::to_string(&PeerControlMessage::Ack { sequence, applied }) {
-                                    let _ = control.send_text(&text).await;
+                                    if control.send_text(&text).await.is_ok() {
+                                        diagnostics.input_ack_sent();
+                                    }
                                 }
                             }
                             PeerControlMessage::Ack { sequence, applied } if !host => {
+                                diagnostics.input_ack_received();
                                 let _ = app.emit("input-ack", InputAckEvent { sequence, applied });
                             }
                             _ => {}
@@ -615,7 +681,14 @@ async fn run_data_events(
                     held.release_all();
                 }
             }
+            _ = diagnostics_poll.tick() => {
+                let snapshot = diagnostics.snapshot();
+                let _ = app.emit("session-diagnostics", snapshot);
+            }
         }
+    }
+    if frames.discard_incomplete_frame() {
+        diagnostics.dropped_incomplete_frame();
     }
     #[cfg(target_os = "windows")]
     held.release_all();

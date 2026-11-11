@@ -1,4 +1,4 @@
-use std::io::Cursor;
+use std::{io::Cursor, time::Instant};
 
 use image::{ColorType, ImageFormat, ImageReader, codecs::jpeg::JpegEncoder, imageops::FilterType};
 use xcap::Monitor;
@@ -24,6 +24,13 @@ pub struct ScreenFrame {
     pub jpeg: Vec<u8>,
 }
 
+#[derive(Clone, Copy)]
+pub struct CaptureTimings {
+    pub capture_us: u64,
+    pub resize_us: u64,
+    pub encode_us: u64,
+}
+
 pub fn validate_jpeg(frame: &ScreenFrame) -> bool {
     ImageReader::with_format(Cursor::new(&frame.jpeg), ImageFormat::Jpeg)
         .into_dimensions()
@@ -43,12 +50,17 @@ pub fn primary_monitor() -> Result<Monitor, String> {
         .ok_or_else(|| "no primary monitor was found".to_owned())
 }
 
-pub fn capture_primary() -> Result<ScreenFrame, String> {
+pub fn capture_primary() -> Result<(ScreenFrame, CaptureTimings), String> {
     let monitor = primary_monitor()?;
+    let capture_started = Instant::now();
     let mut image = monitor.capture_image().map_err(|error| error.to_string())?;
+    let capture_us = capture_started.elapsed().as_micros() as u64;
+    let mut resize_us = 0u64;
+    let mut encode_us = 0u64;
     let scale = (MAX_WIDTH as f64 / image.width() as f64)
         .min(MAX_HEIGHT as f64 / image.height() as f64)
         .min(1.0);
+    let resize_started = Instant::now();
     if scale < 1.0 {
         image = image::imageops::resize(
             &image,
@@ -58,9 +70,11 @@ pub fn capture_primary() -> Result<ScreenFrame, String> {
         );
     }
     let mut image = image::DynamicImage::ImageRgba8(image).to_rgb8();
+    resize_us += resize_started.elapsed().as_micros() as u64;
 
     loop {
         let mut jpeg = Cursor::new(Vec::new());
+        let encode_started = Instant::now();
         JpegEncoder::new_with_quality(&mut jpeg, 45)
             .encode(
                 image.as_raw(),
@@ -69,23 +83,33 @@ pub fn capture_primary() -> Result<ScreenFrame, String> {
                 ColorType::Rgb8.into(),
             )
             .map_err(|error| error.to_string())?;
+        encode_us += encode_started.elapsed().as_micros() as u64;
         if jpeg.get_ref().len() <= MAX_FRAME_BYTES {
-            return Ok(ScreenFrame {
-                id: 0,
-                width: image.width() as u16,
-                height: image.height() as u16,
-                jpeg: jpeg.into_inner(),
-            });
+            return Ok((
+                ScreenFrame {
+                    id: 0,
+                    width: image.width() as u16,
+                    height: image.height() as u16,
+                    jpeg: jpeg.into_inner(),
+                },
+                CaptureTimings {
+                    capture_us,
+                    resize_us,
+                    encode_us,
+                },
+            ));
         }
         if image.width() <= 320 || image.height() <= 180 {
             return Err("screen frame exceeds the 1 MiB transport limit".into());
         }
+        let resize_started = Instant::now();
         image = image::imageops::resize(
             &image,
             image.width() / 2,
             image.height() / 2,
             FilterType::Triangle,
         );
+        resize_us += resize_started.elapsed().as_micros() as u64;
     }
 }
 
@@ -138,6 +162,9 @@ fn chunk_frame(frame: &ScreenFrame) -> Result<Vec<Vec<u8>>, &'static str> {
 pub struct FrameAssembler {
     current: Option<PartialFrame>,
     last_completed_id: Option<u32>,
+    incomplete_frames_dropped: u64,
+    stale_chunks_dropped: u64,
+    last_reassembly_us: Option<u64>,
 }
 
 fn is_newer_frame_id(candidate: u32, current: u32) -> bool {
@@ -151,9 +178,31 @@ struct PartialFrame {
     total_bytes: usize,
     chunks: Vec<Option<Vec<u8>>>,
     received_bytes: usize,
+    started_at: Instant,
 }
 
 impl FrameAssembler {
+    pub fn incomplete_frames_dropped(&self) -> u64 {
+        self.incomplete_frames_dropped
+    }
+
+    pub fn stale_chunks_dropped(&self) -> u64 {
+        self.stale_chunks_dropped
+    }
+
+    pub fn take_reassembly_us(&mut self) -> Option<u64> {
+        self.last_reassembly_us.take()
+    }
+
+    pub fn discard_incomplete_frame(&mut self) -> bool {
+        if self.current.take().is_some() {
+            self.incomplete_frames_dropped = self.incomplete_frames_dropped.saturating_add(1);
+            true
+        } else {
+            false
+        }
+    }
+
     pub fn push(&mut self, data: &[u8]) -> Result<Option<ScreenFrame>, &'static str> {
         if data.len() < HEADER_BYTES
             || data.len() > HEADER_BYTES + CHUNK_BYTES
@@ -193,15 +242,18 @@ impl FrameAssembler {
             .last_completed_id
             .is_some_and(|last_id| !is_newer_frame_id(id, last_id))
         {
+            self.stale_chunks_dropped = self.stale_chunks_dropped.saturating_add(1);
             return Err("stale screen frame");
         }
         if let Some(current) = &self.current
             && current.id != id
             && !is_newer_frame_id(id, current.id)
         {
+            self.stale_chunks_dropped = self.stale_chunks_dropped.saturating_add(1);
             return Err("stale screen frame");
         }
         if self.current.as_ref().is_none_or(|frame| frame.id != id) {
+            self.discard_incomplete_frame();
             self.current = Some(PartialFrame {
                 id,
                 width,
@@ -209,13 +261,16 @@ impl FrameAssembler {
                 total_bytes,
                 chunks: std::iter::repeat_with(|| None).take(count).collect(),
                 received_bytes: 0,
+                started_at: Instant::now(),
             });
         }
-        let frame = self.current.as_mut().ok_or("screen frame state missing")?;
-        if frame.width != width || frame.height != height || frame.total_bytes != total_bytes {
-            self.current = None;
+        if self.current.as_ref().is_some_and(|frame| {
+            frame.width != width || frame.height != height || frame.total_bytes != total_bytes
+        }) {
+            self.discard_incomplete_frame();
             return Err("inconsistent screen frame metadata");
         }
+        let frame = self.current.as_mut().ok_or("screen frame state missing")?;
         if frame.chunks[index].is_none() {
             frame.received_bytes += payload.len();
             frame.chunks[index] = Some(payload.to_vec());
@@ -227,6 +282,7 @@ impl FrameAssembler {
         for chunk in frame.chunks.iter().flatten() {
             jpeg.extend_from_slice(chunk);
         }
+        self.last_reassembly_us = Some(frame.started_at.elapsed().as_micros() as u64);
         self.last_completed_id = Some(id);
         self.current.take().ok_or("screen frame state missing")?;
         Ok(Some(ScreenFrame {
@@ -264,6 +320,8 @@ mod tests {
             result = assembler.push(&chunk).unwrap().or(result);
         }
         assert_eq!(result, Some(frame));
+        assert!(assembler.take_reassembly_us().is_some());
+        assert_eq!(assembler.take_reassembly_us(), None);
     }
 
     #[test]
@@ -383,6 +441,25 @@ mod tests {
             completed = assembler.push(chunk).unwrap().or(completed);
         }
         assert_eq!(completed, Some(newer));
+        assert_eq!(assembler.incomplete_frames_dropped(), 1);
+        assert_eq!(assembler.stale_chunks_dropped(), 1);
+    }
+
+    #[test]
+    fn frame_assembler_counts_incomplete_frame_when_session_ends() {
+        let frame = ScreenFrame {
+            id: 1,
+            width: 1280,
+            height: 720,
+            jpeg: vec![1; 35_000],
+        };
+        let chunks = chunk_frame(&frame).unwrap();
+        let mut assembler = FrameAssembler::default();
+        assert_eq!(assembler.push(&chunks[0]).unwrap(), None);
+
+        assert!(assembler.discard_incomplete_frame());
+        assert!(!assembler.discard_incomplete_frame());
+        assert_eq!(assembler.incomplete_frames_dropped(), 1);
     }
 
     #[test]

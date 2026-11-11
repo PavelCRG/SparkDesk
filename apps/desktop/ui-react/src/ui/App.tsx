@@ -10,7 +10,7 @@ import { SessionPage } from "./components/SessionPage";
 import { RemoteViewer } from "./components/RemoteViewer";
 import { TrustStrip } from "./components/TrustStrip";
 import { copy, type Language } from "./copy";
-import type { AppStatus, InputAck, RemoteInput } from "./types";
+import type { AppStatus, InputAck, RemoteInput, SessionDiagnostics } from "./types";
 
 const emptyStatus: AppStatus = { deviceId: "", networkState: "not_configured", noticeState: "idle", sessionRole: "none", controlEnabled: false, detail: "" };
 
@@ -28,7 +28,9 @@ export function App() {
   const [partnerError, setPartnerError] = useState("");
   const [message, setMessage] = useState("");
   const [frameRate, setFrameRate] = useState<number | null>(null);
+  const [inputLatencyP50, setInputLatencyP50] = useState<number | null>(null);
   const [inputLatencyP95, setInputLatencyP95] = useState<number | null>(null);
+  const [diagnostics, setDiagnostics] = useState<SessionDiagnostics | null>(null);
   const [copied, setCopied] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const appWindow = useMemo(() => isTauri() ? getCurrentWindow() : null, []);
@@ -75,6 +77,20 @@ export function App() {
   }, [appWindow]);
 
   useEffect(() => {
+    if (!appWindow || !isSessionWindow) return;
+    let unlisten: (() => void) | undefined;
+    let alive = true;
+    void listen<SessionDiagnostics>("session-diagnostics", ({ payload }) => setDiagnostics(payload)).then((stop) => {
+      unlisten = stop;
+      if (!alive) stop();
+    });
+    return () => {
+      alive = false;
+      unlisten?.();
+    };
+  }, [appWindow, isSessionWindow]);
+
+  useEffect(() => {
     if (!appWindow) return;
     let unlisten: (() => void) | undefined;
     let alive = true;
@@ -82,10 +98,10 @@ export function App() {
       const sentAt = pendingInputs.current.get(payload.sequence);
       if (sentAt === undefined) return;
       pendingInputs.current.delete(payload.sequence);
-      if (!payload.applied) return;
       inputRtts.current.push(performance.now() - sentAt);
       if (inputRtts.current.length > 200) inputRtts.current.shift();
       const sorted = [...inputRtts.current].sort((a, b) => a - b);
+      setInputLatencyP50(Math.round(sorted[Math.floor((sorted.length - 1) * 0.5)]));
       setInputLatencyP95(Math.round(sorted[Math.ceil(sorted.length * 0.95) - 1]));
     }).then((stop) => {
       unlisten = stop;
@@ -172,7 +188,9 @@ export function App() {
     pendingInputs.current.clear();
     inputRtts.current = [];
     setFrameRate(null);
+    setInputLatencyP50(null);
     setInputLatencyP95(null);
+    setDiagnostics(null);
   }, [sessionActive]);
 
   const toggleFullscreen = useCallback(async () => {
@@ -262,7 +280,12 @@ export function App() {
     void invoke("send_remote_input", { sequence, input }).catch(() => pendingInputs.current.delete(sequence));
   }, []);
 
-  const reportFrameRate = useCallback((value: number) => setFrameRate(value), []);
+  const reportFrameMetrics = useCallback((fps: number, renderedFrames: number, lastFrameId: number) => {
+    setFrameRate(fps);
+    if (renderedFrames > 0) {
+      void invoke("report_viewer_frames", { frameCount: renderedFrames, lastFrameId }).catch(() => undefined);
+    }
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -308,13 +331,15 @@ export function App() {
           detail={status.detail}
           fullscreen={fullscreen}
           frameRate={frameRate}
+          inputLatencyP50={inputLatencyP50}
           inputLatencyP95={inputLatencyP95}
+          diagnostics={diagnostics}
           t={t}
           onDisconnect={() => void disconnect()}
           onToggleControl={(enabled) => void toggleRemoteControl(enabled)}
           onToggleFullscreen={() => void toggleFullscreen()}
         >
-          {status.sessionRole === "viewer" && <RemoteViewer controlEnabled={status.controlEnabled} fullscreen={fullscreen} t={t} onInput={sendRemoteInput} onFrameRate={reportFrameRate} />}
+          {status.sessionRole === "viewer" && <RemoteViewer controlEnabled={status.controlEnabled} fullscreen={fullscreen} t={t} onInput={sendRemoteInput} onFrameMetrics={reportFrameMetrics} />}
         </SessionPage>
       ) : (
         <main id="home" className="main-content">
