@@ -8,6 +8,7 @@
 /apps/desktop/ui-react/tsconfig.tsbuildinfo
 /apps/desktop/gen/schemas/
 /dist/
+/.worktrees/
 /.env
 /.env.*
 !.env.example
