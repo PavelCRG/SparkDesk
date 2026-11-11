@@ -2,9 +2,9 @@
 
 <h1 align="center">SparkDesk</h1>
 
-<p align="center"><strong>Private remote support, with permission.</strong></p>
+<p align="center"><strong>Remote desktop for Windows.</strong></p>
 
-SparkDesk is account-free remote support for Windows. Connect directly to another device, view its screen with the owner's approval, and request mouse and keyboard control separately. The owner can turn control off at any time.
+SparkDesk is a Windows remote desktop app for viewing and controlling another computer remotely.
 
 > **Status: prototype.** The consent and remote-input flows are implemented. Two-device performance, 60 FPS, and cross-network connectivity still need real Windows testing.
 
